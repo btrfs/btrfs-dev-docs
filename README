@@ -14,13 +14,24 @@ Examples in no particular order:
 
 * mount
 * physical and logical addressing (aka. chunk tree mappings)
-* how balance works
+* how balance, scrub, dev-replace work
 * purpose of various trees
+* data structures
 * transaction commit phases
 * compression write out
 * space reservations
-* connections to VFS, MM
+* connections to VFS: acl, xattr, inode, file
+* MM: pagecache
 * locking
+* backreferences
+* free space tracking
+* tree-log
+* subvolumes from the inside, radix tree, dentry lookups
+* ioctl interface
+* delayed refs
+* delayed inodes
+* workqueues
+* orphans
 
 Repository workflow:
 * clone your version
