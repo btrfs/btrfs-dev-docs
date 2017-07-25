@@ -34,7 +34,12 @@ Examples in no particular order:
 * orphans
 
 Repository workflow:
-* clone your version
-* start a new document or edit existing
-* send merge request
-* repeat
+
+* initially clone the repository
+* create a branch, start a new document or edit existing
+* send merge request, merge it yourself or wait until somebody does
+* throw away the branch or rebase after merge to continue
+
+Note: master branch is protected and should never be rebased, everything
+should go through pull/merge requests. We don't need sign-off, etc. For
+changelog, a short description is ok.
