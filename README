@@ -43,3 +43,8 @@ Repository workflow:
 Note: master branch is protected and should never be rebased, everything
 should go through pull/merge requests. We don't need sign-off, etc. For
 changelog, a short description is ok.
+
+To create a merge request, go to web repository, listing of branches (tab
+Branches), click 'Create merge request', edit what you need, 'Submit merge
+request'. After this it's ready to merge, you can click 'Merge' now or let
+somebody know.
