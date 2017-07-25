@@ -1,0 +1,29 @@
+Landing zone for developer documentation of btrfs
+-------------------------------------------------
+
+Before this will be public, we want to have some example chapters with basic
+structure and formatting.
+
+* collect your notes about an area you understand, have reviewed or have documented already
+* start a whole structure of the docs, chapters, sections, ...
+* skip formatting for now
+* document how things are implemented, the main areas, operations
+* high-level overview
+
+Examples in no particular order:
+
+* mount
+* physical and logical addressing (aka. chunk tree mappings)
+* how balance works
+* purpose of various trees
+* transaction commit phases
+* compression write out
+* space reservations
+* connections to VFS, MM
+* locking
+
+Repository workflow:
+* clone your version
+* start a new document or edit existing
+* send merge request
+* repeat
