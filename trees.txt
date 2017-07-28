@@ -185,6 +185,8 @@ rebalance, and so on.
 
 This tree also holds btrfs_block_group_items, which describe allocated chunks.
 
+This tree also holds btrfs_block_group_items, which describe allocated chunks. 
+
 
 Chunk tree
 ~~~~~~~~~~
@@ -195,12 +197,20 @@ logical to physical translation and dev_item describe physical devices,
 comprising this filesystem.
 
 
+The chunk tree holds 2 types of items - btrfs_chunk and btrfs_dev_item. Those 
+items are used to resolve physical<=>logical adressing. Chunk items hold the 
+logical to physical translation and dev_item describe physical devices, 
+comprising this filesystem.
+
 Device tree
 ~~~~~~~~~~~
 
 The device tree stores btrfs_dev_extent items. They describe allocated portions
 of the physical disk space. Device stats items are also found in this tree.
 
+
+The device tree houses btrfs_dev_extent items. They describe allocated portions
+of the physical disk space. 
 
 Filesystem/subvolume tree
 ~~~~~~~~~~~~~~~~~~~~~~~~~
