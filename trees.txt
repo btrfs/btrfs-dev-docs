@@ -273,6 +273,19 @@ stored in the relocation tree. Once the update is complete, items in the
 relocation tree are swapped with their counterparts in the affected subvolume,
 and the relocation tree is discarded.
 
+Relocation tree
+
+Defragmentation, shrinking and rebalancing operations require extents to be
+relocated. However, doing a simple copy-on-write of the relocating extent will
+break sharing between snapshots and consume disk space. To preserve sharing,
+an update-and-swap algorithm is used, with a special relocation tree serving as
+scratch space for affected metadata. The extent to be relocated is first copied
+to its destination. Then, by following backreferences upward through the 
+affected subvolume's file system tree, metadata pointing to the old extent is
+progressively updated to point at the new one; any newly updated items are 
+stored in the relocation tree. Once the update is complete, items in the 
+relocation tree are swapped with their counterparts in the affected subvolume,
+and the relocation tree is discarded.
 
 Log tree
 ~~~~~~~~
@@ -296,6 +309,15 @@ filesystem has 10 subvolumes, and in turn on each one of those there is at
 least one file fsynced, then there are going to be 10 Log trees and the Root
 log tree is going to point to each one of them.
 
+An fsync is a request to commit modified data immediately to stable storage.
+fsync-heavy workloads (like a database or a virtual machine whose running OS
+fsyncs intensively) could potentially generate a great deal of redundant write 
+I/O by forcing the file system to repeatedly copy-on-write and flush frequently
+modified parts of trees to storage. To avoid this, a temporary per-subvolume 
+log tree is created to journal fsync-triggered copy-on-writes. Log trees are 
+self-contained, tracking their own extents and keeping their own checksum
+items. Their items are replayed and deleted at the next full tree commit or
+(if there was a system crash) at the next remount.
 
 Free space tree
 ~~~~~~~~~~~~~~~
