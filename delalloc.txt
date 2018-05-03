@@ -1,0 +1,114 @@
+Introduction
+===========================================================
+
+Most filesystems resorts to all kinds of trickery to ensure performance. One of
+those tricks is called delayed allocation. This mean the filesystem goes to 
+great lengths to try and delay as much as possible the moment calling into the
+extent allocator. BRFS makes no exception. Due to the nature of implementation 
+the code involved in this operation is a bit involved. The idea of this document
+is to illuminate how delayed allocations (delallocs) are implemented in btrfs. 
+The complexicty stems primarily from the fact that BTRFS relies on a lot of 
+call back calls and asynchornicity to it's hard to follow the code. 
+
+
+Buffered write path
+==========================================================
+
+Delallocs are created in the buffered write path (btrfs_buffered_write). That 
+function is fairly involved but the gist really is: 
+ 1. Allocate enough space to satisfy the space being written. This is achieved
+ via btrfs_delalloc_reserve_metadata. This function ensures there is enough 
+ space for metadata (checksum bytes and data structures describing the extents
+ being written). 
+
+ 2. A number of pages necessary to house the number of bytes being written are 
+ prepared by means of two functions: prepare_pages allocates the pages in the 
+ pagecache tree of the file and lock_and_cleanup_extent_if_need ensures that 
+ if there are any pending writes to the range of the file being written they 
+ are completed. 
+
+ 3. Those pages are filled in with the new data via btrfs_copy_from_user. 
+
+At this point we have an inode and a range of page cache pages, corresponding
+to the range of the file being currently written. No btrfs data structures have
+yet been created for those "dirty" pages. Since we are using delalloc we've 
+only reserved space for the data/metadata but still don't have an idea where 
+on disk the data is going to be persisted. So there needs to be a way to tell 
+btrfs "those pages need something done to them in order to actually persist" the
+data. This final step of the process is implemented via: 
+
+ 4. btrfs_dirty_pages. What this function does is to ensure that for any 
+ writes after EOF in-memory copy of the extent data structures are created 
+ (btrfs_find_new_delalloc_bytes). After that btrfs_set_extent_delalloc is 
+ called which sets the EXTENT_DELALLOC bit to the newly written range of the 
+ file.  Finally all the newly written pages have they dirty flag set. This implies
+ that they are going to be written back to disk when the writeback timer expires 
+ or if the system is low on memory. 
+
+Despite the buffered writeback code being messy, it's really those 4 logical 
+steps which trigger the delalloc logic. Bear in mind that we still haven't 
+called into the allocator to persist data i.e stuff is delayed. 
+
+Until the pages are presisted any reads to the region which has been written 
+will be served directly from the pages currently present in memory.
+
+
+Page writeback
+==========================================================
+When the system is either low on memory or the writeback time has expired 
+pag writeback is triggered. There is a substantial amount of generic code which 
+is invoked before the filesystem is eventually called. The entry point into the 
+fs is the ->writepages function pointer, which is set to btrfs_writepages, this
+is really a thin wrapper over extent_write_cache_pages. The last function goes
+through every page of the inode passed (i.e. the address_space argument) and 
+calls __extent_writepage on it. __extent_writepage is responsible for allocating 
+all the necessary on-disk data structures describing the to-be-written page 
+and submitting the page for writeback. This is performed in the following 
+sequence: 
+
+1. writepage_delalloc is called. This function goes through the io_tree of the 
+inode whose page we are writing and tries to find every range which is marked
+DELALLOC. This is done by calling find_lock_delalloc_range. Remember that the 
+range was initialised by the buffered write path. Once such a range is found, 
+as defined by delalloc_start/delalloc_end variables they are passed to the 
+->fill_delalloc callback function. This function pointer really points to 
+run_delalloc_range, which is a simple dispatch function. The purpose of the 
+dispatch function is to decide which routine to call to "fill the delalloc 
+range". The decision is based on whether NODATACOW is enabled (run_delalloc_nocow 
+is called in this case) or whether the BTRFS_INODE_REPALLOC flag is set, signalling
+there are preallocated extents (also handled by run_delalloc_nocow). Or whether
+compression is needed (in this case cow_file_range_async is called). Finally if 
+none of the above is true cow_file_range is called. 
+
+For the sake of simplicity only cow_file_range is going to be considered in this 
+article. The basic idea is to allocate extents via btrfs_reserve_extent on disk
+for the range and create. Following a successful reservation ordered data 
+struct is allocated via btrfs_add_ordered_extent.
+
+So let's stop for a moment and consider where we are in the lifetime of the 
+data. So now we have dirty pages created by the buffered write. What just 
+happened is appropriate extents were allocated for the range of bytes which the 
+currently written page represents and appropriate ordered data structs were
+allocated to track those extents. What remains is for actual IO on the page be
+triggered.
+
+2. __extent_writepage_io is called to trigger io. This function really loops 
+until we've submitted write requests for all extents within the requested range. 
+The sequence of submission consists of : 
+
+   1. btrfs_get_extent - to get the newly created extents by fill_delalloc 
+   callback and use that extent information to calculate the amount that needs 
+   to be written. 
+   2. Once all of this is done, submit_extent_page is called. This function 
+   builds the require 'bio' structs and sets endio routine to
+   end_bio_extent_writepage.
+
+
+<TODO: Discuss writepage_start_hook and writepage_end_io_hook>
+Following this 
+
+
+End IO path 
+============================================================
+Upon successful write of data end_bio_extent_writepage is called. It first 
+calls end_extent_writepage which really calls writepage_end_io_hook.

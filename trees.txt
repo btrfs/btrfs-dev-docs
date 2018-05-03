@@ -1,0 +1,246 @@
+Introduction
+
+BTRFS stands for B-tree filesystem. Naturally this means that the filesystem is
+organised as a series of b-trees. In fact the code to deal with btrees in btrfs
+is generic and is oblivious of the type of items being stored. Generally the
+BTRFS btree implementation knows of only 3 structures: keys, items and block
+headers. Trees are stored in nodes, each of with belong to a level in the
+b-tree structure. Internal nodes contain references to other internal nodes on
+the next level, or to leaf nodes. Leaf nodes are considered to be at level 0.
+Leaf nodes contain various types of data structures, depending on the tree.
+
+Data structures
+
+Btree keys
+
+The filesystem is composed of objects, each of which has an abstract 64bit object id.
+When an object is created, a previously unused object id is chosen for it. The object id
+makes up the most significant bits of the key, allowing all of the items for a given
+filesystem object to be logically grouped together in the B-tree. The 'type'
+field describes the kind of data held by an item; an object typically comprises
+several items. The offset field describes data held in an extent.
+
+Every object in the FS has a corresponding key with the following definition:
+
+struct btrfs_disk_key {
+	__le64 objectid;
+	u8 type;
+	u64 offset;
+}
+============================================================================
+
+Btree internal nodes
+
+<TODO> 
+
+===========================================================================
+
+Btree leaf nodes
+
+Conceptually a leaf node will have the following structure:
+
+| block header | I0 | I1 | I2 | free space | D2 | D1 | D0 |
+
+Every tree block (leaf or node) starts with the following structure:
+
+struct btrfs_header {
+		/* Checksum of everything after this field (from 0x20 to the end of the node) */
+        u8 csum[BTRFS_CSUM_SIZE];
+
+		/* FS specific uuid */
+        u8 fsid[BTRFS_FSID_SIZE];
+
+		/* which block this node is supposed to live in (Logical address of the node) */
+        __le64 bytenr;
+
+		/* Various flags */
+        __le64 flags;
+
+        /* allowed to be different from the super from here on down */
+        u8 chunk_tree_uuid[BTRFS_UUID_SIZE];
+
+		/* Transaction id at time when this block was modified */
+        __le64 generation;
+
+		/* The id of the tree that contains this node */
+        __le64 owner;
+
+		/* Number of items this node houses */
+        __le32 nritems;
+
+		/* Level at which this nodes resides (always 0 for leaf nodes)
+        u8 level;
+}
+
+Following the block header there is an array of btrfs items, which are
+represented by the following structure:
+
+struct btrfs_item {
+        struct btrfs_disk_key key;
+		/* Offset of the data portion of this item in the btree node */
+        __le32 offset;
+		/* Size of the data portion of this item in the btree node */
+        __le32 size;
+}
+
+
+In order to arrive at a particular item, the first thing that has to happen is
+locate the item. This is done with the help of the btrfs_disk_key strucutre. It
+essentially represents the logical address of an item. So an item is really
+just a key with additional offset and size information.
+
+Item data in btrfs is variably sized, and each item in the beginning of the
+btree node is paired with the respective data portion. This leads to the
+item array in the bginning and the reverse sorted data array at the end of the
+node. Those 2 array grow toward each other.
+
+=============================================================================
+
+Trees
+
+A filesystem is comprised of a forest of trees. Currently there are 10
+distinct trees:
+
+Root tree
+
+This tree indexes the B-trees making up the filesystem. Essentially each root
+in this tree is the starting point for one of the trees below. Additionally,
+there could be items which represent ordinary files and are normally found in
+the FS tree. This is due to the old/default freespace cache being implemented
+as files, yet they are invisible to the user and are used internally by the
+filesystem to quickly find freespace in a the filesystem.
+
+Extent allocation tree
+
+This tree tracks allocated extents in extent items. Each of those items describe
+a particular contiguous on-disk area. Those items also holds all
+back-references to an extent. This allows moving an extent if needed or recovering
+from a damaged disk block. Taken as a whole, back-references multiply the number of
+filesystem disk pointers by 2. For each forward bpointer, there is exactly one
+back-pointer.
+
+There could be many references to an extent, each addressing only part of it.
+For example, consider file foo, which has an on-disk extent 100KB–128KB. File
+foo is cloned creating file bar. Later on, a
+range of 10KB is overwritten in bar. This could cause the following situation.
+There are three pointers into extent 100–128KB, covering different parts of it.
+The extent-item keeps track of all such references, to allow moving the entire
+extent at a later time. An extent could potentially have a large number of
+back references, in which case the extent-item does not fit in a single B-tree
+leaf node. In such cases, the item spills and takes up more than one leaf. A
+back reference is a logical hint - it is not a physical address. It is constructed
+from the root object id, generation id, tree level, and lowest object-id in the
+pointing block. This allows finding the pointer after a lookup traversal
+starting at the root object-id. In this example, extent 100–128KB has three back
+references, one from foo, and two from bar. The back references also serve as
+the ref count; when it reaches zero, the extent can be freed. An important
+operation on the extent-tree is finding all references into a disk area. The
+extent items are sorted by start address, and there are no overlaps between items.
+This allows doing a range query on the B-tree, resulting in all extents in the
+range. We can then extract all the back references and find all pointers to this
+disk area. This is a crucial operation used for moving data out of an area.
+There could be multiple reasons for this: garbage collection, device removal,
+file system resize, RAID rebalance, and so on.
+
+This tree also holds btrfs_block_group_items, which describe allocated chunks.
+
+
+Chunk tree
+
+The chunk tree holds 2 types of items - btrfs_chunk and btrfs_dev_item. Those
+items are used to resolve physical<=>logical adressing. Chunk items hold the
+logical to physical translation and dev_item describe physical devices,
+comprising this filesystem.
+
+Device tree
+
+The device tree houses btrfs_dev_extent items. They describe allocated portions
+of the physical disk space. Device stats items are also found in this tree. 
+
+Filesystem/subvolume tree
+
+This tree stores user visible files and directories. Each subvolume is implemented
+by a separate tree. Subvolumes can be snapshotted and cloned, creating additional
+B-trees. The roots of all subvolumes are indexed by the tree of tree roots.
+
+Checksum tree
+
+This tree holds one checksum item per allocated extent. The item itself contains
+a list of checksums per page in the extent.
+
+Quota tree
+
+Quota tree is used to hold information about qgroups, which define the usage
+limits of a particular subvolume. The tree contains 4 types of items:
+
+* status items - they contains global information about qgroup state such as
+whether it's enabled and consistent
+
+* qgroup info item - this item holds accounting information about current space
+usage
+
+* qgroup limit item - configured limits reside in this item
+
+* quota relation item - this item describes a parent<->child relationship
+between 2 qgroups.
+
+UUID tree
+
+The uuid was not part of the initial btrfs design. It was added later as a
+performance optimisation to be used during subvolume/snapshot send/receive. It
+is essentially a persistent cache of subvolume id <=> uuid mappings. Items in
+this tree store the 128-bit UUID as a 2 64 bits portions. The btrfs_disk_key's
+objectid field contains the lower 64bits and the offset field contains the
+topmost 64 bits field. The data portion of an item contains a single 64 bit
+value which is the subvolume id.
+
+Free space tree
+
+The free space tree is a relatively new addition to BTRFS and wasn't part of the
+original design. The idea behind is to provide better scalability than the
+quaint free space cache, improve the interface  and make use of all the
+benefits of btrees : checksumming, RAID handling and wel-understood behavior.
+It contains items which describe the free space the file system has, this makes
+it efficient for BTRFS to quickly find available space when writing data to
+disk. To ensure consistency and proper operation the free space tree is
+updated in tandem with the extent tree.
+
+Relocation tree
+
+Defragmentation, shrinking and rebalancing operations require extents to be
+relocated. However, doing a simple copy-on-write of the relocating extent will
+break sharing between snapshots and consume disk space. To preserve sharing,
+an update-and-swap algorithm is used, with a special relocation tree serving as
+scratch space for affected metadata. The extent to be relocated is first copied
+to its destination. Then, by following backreferences upward through the
+affected subvolume's file system tree, metadata pointing to the old extent is
+progressively updated to point at the new one; any newly updated items are
+stored in the relocation tree. Once the update is complete, items in the
+relocation tree are swapped with their counterparts in the affected subvolume,
+and the relocation tree is discarded.
+
+Log tree
+
+An fsync is a request to commit modified data immediately to stable storage.
+fsync-heavy workloads (like a database or a virtual machine whose running OS
+fsyncs intensively) could potentially generate a great deal of redundant write
+I/O by forcing the file system to repeatedly copy-on-write and flush frequently
+modified parts of trees to storage. To avoid this, a temporary per-subvolume
+log tree is created to journal fsync-triggered copy-on-writes. Log trees are
+self-contained, tracking their own extents and keeping their own checksum
+items. Their items are replayed and deleted at the next full tree commit or
+(if there was a system crash) at the next remount.
+
+Root log tree
+
+This is a btree which tracks all the existing Log trees. So for example if a 
+filesystem has 10 subvolumes, and in turn on each one of those there is at 
+least one file fsynced, then there are going to be 10 Log trees and the 
+Root log tree is going to point to each one of them. 
+
+References:
+
+ACM Reference Format:
+Rodeh, O., Bacik, J., and Mason, C. 2013. BTRFS: The Linux B-tree filesystem. ACM Trans. Storage 9, 3,
+Article 9 (August 2013), 32 pages.
+DOI:http://dx.doi.org/10.1145/2501620.2501623
