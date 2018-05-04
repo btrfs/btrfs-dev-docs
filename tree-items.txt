@@ -887,8 +887,6 @@ structure. Files with hard links in multiple directories have multiple reference
 items, one for each parent directory. Files with multiple hard links in the
 same directory pack all of the links' filenames into the same reference item.
 
-<TODO DOCUMENT INODE EXT REF>
-
 Key:
 key.objectid = inode number of file
 key.type = BTRFS_INODE_REF_KEY
@@ -903,6 +901,37 @@ struct btrfs_inode_ref {
 
         /* Variable length, non-null terminated string of length 'name_len' */
 }
+
+============================================================================
+
+EXTENDED INODE REF item
+
+The total number of inode refs that a given inode number / parent
+inode number tuple can have is limited by our leaf size. Unfortunately
+this limits the maximum number of hardlinks we can have. Extended
+inode refs fix this limitation by using a key offset that's a hash of
+the link name and parent inode number. Extended refs don't replace the
+existing ref array. An inode gets an extended ref for a given link
+only after the ref array has been filled.
+
+Key:
+key.objectid = inode number of file
+key.type = BTRFS_INODE_EXTREF_KEY
+key.offset = hash of link name and parent inode number
+
+struct btrfs_inode_extref {
+       /* Inode number of parent directory */
+       __le64 parent_objectid;
+
+	/* Index in the parent directory of this hardlink */
+	__le64 index;
+
+	/* Length of string, coming right after this member */
+	__le16 name_len;
+
+	/* Variable length, non-null terminated string of length 'name_len' */
+	__u8   name[0];
+} __attribute__ ((__packed__));
 
 ============================================================================
 
