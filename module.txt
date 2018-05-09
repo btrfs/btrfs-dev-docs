@@ -1,0 +1,59 @@
+The kernel module
+=================
+
+
+VFS interface
+-------------
+
+Module initialization registers the filesystem by name, visible in
+/proc/filesystems and sets up the structures so mount of btrfs will reach to
+the exported superblock functions.
+
+The description structure is called 'type', called btrfs_fs_type. It contains
+the filesystem name, flags, superblock options and callbacks for setting up
+a new filesystem from the mount syscall.
+
+Since 4.15, there are separate types for the 1st mount of a filesystem and
+subsequent mounts of subvolumes. The difference is in the mount callback only
+and has simplified the mount path.
+
+The third type is for the built-in self tests, but such filesystem cannot
+be mounted by users.
+
+
+Other structures
+----------------
+
+Besides the fundamental VFS set up, there are several helper and module-wide
+structures set up at module load time:
+
+* sysfs
+* compression workspaces
+* workqueues
+* any internal memory structures for later allocation
+* self tests are run if configured
+
+
+After load
+----------
+
+After the module is properly loaded, mount of fileystem type 'btrfs' will be
+possible. See [mount.txt] for details about the mount.
+
+
+Persistent state - fs_devices
+-----------------------------
+
+There are some structures that can be active without any filesystem being
+currently mounted. This in particular are the devices, that can be part of a
+multi-device filesystem and the scanning is triggered by the user before the
+mount.
+
+The devices are identified by their UUID and associated FSID. The global
+structure tracks all currently scanned devices and groups them by the FSID.
+The objects exist until the module is destroyed and are not (currently)
+automatically cleaned up once the device gets wiped.
+
+This is because we don't know if the device was not just unplugged. Then
+mount would fail if there's no post-plug scan done by some tool.
+
