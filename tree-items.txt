@@ -1,19 +1,22 @@
-Introduction
+Tree items
+==========
 
-Data is held in the various btrees in the form of items. Each items has a
+Data is held in the various b-trees in the form of items. Each items has a
 custom structure dictated based on its purpose. Items are indexed by keys and
 the key for each respective item has custom meanings of its 3 data members.
 [refer to table below for mappings from keys to items and the meaning of each
 respective field]
 
 Keys
+----
 
 As explaiend in [trees.txt] there is a generic btrfs_item struct which maps
 to the specific btrfs_*_item structs. The table below lists the various data
 that the embedded btrfs_key in btrfs_item hold for each item type.
-==========================================================
+
 
 ROOT item
+---------
 
 Every tree in BTRFS is represented by a root item in the root tree. Those tree
 can either be one of the default tree as described in trees.txt or a file tree,
@@ -113,18 +116,20 @@ struct btrfs_root_item {
         __le64 reserved[8];
 }
 
-==========================================================
-ROOT REF item
 
-ROOT REF items are created when either a snapshot or a subvolume is created.
+ROOT REF item
+-------------
+
+ROOT_REF items are created when either a snapshot or a subvolume is created.
 Their purpose is to allow for quick identification of the parent of either a
-subvolume or a snapshot. This item is used to represent both a forward reference
-(from parent -> child) or a back reference (child -> parent). On every subvol
-creation there are 2 such items cread (one for backref and one for forward ref).
-Forward refs allows for quickly identfitying the locations in a directory where
-subvolumes are rooted. This can be useful e.g. recursive snapshotting. Root back
-refs allows to recover lost snapshots. The body of this item represents
-information about the direntry of the newly created subvolume.
+subvolume or a snapshot. This item is used to represent both a forward
+reference (from parent -> child) or a back reference (child -> parent). On
+every subvol creation there are 2 such items cread (one for backref and one
+for forward ref).  Forward refs allows for quickly identfitying the locations
+in a directory where subvolumes are rooted. This can be useful e.g. recursive
+snapshotting. Root back refs allows to recover lost snapshots. The body of
+this item represents information about the direntry of the newly created
+subvolume.
 
 Key:
 key.objectid = if BTRFS_ROOT_REF_KEY: id of the subvolume of the parent
@@ -145,9 +150,9 @@ struct btrfs_root_ref {
 		/* Actual name string follows */
 }
 
-==========================================================
 
-INODE ITEM:
+INODE ITEM
+----------
 
 This structure contains the information typically associated with a UNIX-style
 inode's stat(2) data.
@@ -184,37 +189,39 @@ struct btrfs_inode_item {
 
 Possible flags are:
 
-BTRFS_INODE_NODATASUM - Don't perform checksum operations on this inode
+* BTRFS_INODE_NODATASUM - Don't perform checksum operations on this inode
+* BTRFS_INODE_NODATACOW - Don't perform CoW for data extents on this inode,
+  when the reference count is 1.
+* BTRFS_INODE_READONLY - This is a special-purpose flag used only by the
+  convert code. It makes the inode readonly but deletable
+* BTRFS_INODE_NOCOMPRESS - Do not compress this inode. This flag may be
+  changed by the kernel as compression ratios change. If the compression ratio
+  for data associated with an inode becomes undesirable, this flag will be
+  set. It may be cleared if the data changes and the compression ratio is
+  favorable again.
+* BTRFS_INODE_PREALLOC - Inode contains preallocated extents. This instructs
+  the kernel to attempt to avoid CoWing those extents.
+* BTRFS_INODE_SYNC - Operations on this inode will be performed synchronously.
+* BTRFS_INODE_IMMUTABLE - Inode is read-only regardless of UNIX permissions or
+  ownership. Attempts to modify this inode will result in EPERM being returned
+  to the user.
+* BTRFS_INODE_APPEND - This inode is append-only.
+* BTRFS_INODE_NODUMP - This inode is not a candidate for dumping using the
+  dump(8) program. [Accepted but not implemented]
+* BTRFS_INODE_NOATIME - Do not update atime when this inode is accessed.
+* BTRFS_INODE_DIRSYNC - Operations on directory operations will be performed
+  synchronously.
+* BTRFS_INODE_COMPRESS - Compression is enabled on this inode.
 
-BTRFS_INODE_NODATACOW - Don't perform CoW for data extents on this inode, when the reference count is 1.
 
-BTRFS_INODE_READONLY - This is a special-purpose flag used only by the convert code. It makes the inode readonly but deletable
+CHUNK_ITEM
+----------
 
-BTRFS_INODE_NOCOMPRESS - Do not compress this inode. This flag may be changed by the kernel as compression ratios change. If the compression ratio for data associated with an inode becomes undesirable, this flag will be set. It may be cleared if the data changes and the compression ratio is favorable again.
-
-BTRFS_INODE_PREALLOC - Inode contains preallocated extents. This instructs the kernel to attempt to avoid CoWing those extents.
-
-BTRFS_INODE_SYNC - Operations on this inode will be performed synchronously.
-
-BTRFS_INODE_IMMUTABLE - Inode is read-only regardless of UNIX permissions or ownership. Attempts to modify this inode will result in EPERM being returned to the user.
-
-BTRFS_INODE_APPEND - This inode is append-only.
-
-BTRFS_INODE_NODUMP - This inode is not a candidate for dumping using the dump(8) program. [Accepted but not implemented]
-
-BTRFS_INODE_NOATIME - Do not update atime when this inode is accessed.
-
-BTRFS_INODE_DIRSYNC - Operations on directory operations will be performed synchronously.
-
-BTRFS_INODE_COMPRESS - Compression is enabled on this inode.
-
-==========================================================
-CHUNK ITEM
-
-The chunk items are used to describe the logical address space of the backing store. They are divided into
-data and metadata chunk items. When metadata has to be written first a chunk item with enough freespace has
-to be found and then it's used to write data. Similarly, when data is to be written a data chunk item is
-located and used.
+The chunk items are used to describe the logical address space of the backing
+store. They are divided into data and metadata chunk items. When metadata has
+to be written first a chunk item with enough freespace has to be found and
+then it's used to write data. Similarly, when data is to be written a data
+chunk item is located and used.
 
 Key:
 key.type = BTRFS_CHUNK_ITEM_KEY
@@ -272,8 +279,9 @@ struct btrfs_stripe {
         __u8 dev_uuid[BTRFS_UUID_SIZE];
 }
 
-============================================================================
+
 DEVICE item
+-----------
 
 Each constituent device in a btrfs filesystem is represented by a DEVICE item.
 It described various characteristics of the underlying physical device such as
@@ -331,12 +339,15 @@ struct btrfs_dev_item {
         /* uuid of FS who owns this device */
         __u8 fsid[BTRFS_UUID_SIZE];
 }
-============================================================================
+
+
 DEVICE EXTENT item
+------------------
 
 Device extent items represent allocated space on every physical disk. This
 structure is used to map physical extents on an individual backing device to a
-chunk. This extent may be the only one for a particular chunk or one of several.
+chunk. This extent may be the only one for a particular chunk or one of
+several.
 
 Key:
 key.objectid = device id of the device this extent is allocated from
@@ -360,8 +371,9 @@ struct btrfs_dev_extent {
         __u8 chunk_tree_uuid[BTRFS_UUID_SIZE];
 }
 
-============================================================================
+
 DEVICE STATS item
+-----------------
 
 Every constituent device of a btrfs partition has a DEVICE STATS items associated
 with. It stores IO stats in the device tree. The body of the item is a simple
@@ -398,14 +410,15 @@ enum btrfs_dev_stat_values {
         BTRFS_DEV_STAT_VALUES_MAX
 };
 
-============================================================================
+
 DEV REPLACE item
+----------------
 
 When dev replace is initiated a dev replace item is inserted into the device
-tree. It describes the state of a device replace operation. When a filesystem is
-being mounted btrfs' code will check to see if such an item exists and populate
-its in-memory state with the values found in the item. There can ever be at most
-one such item in the device tree.
+tree. It describes the state of a device replace operation. When a filesystem
+is being mounted btrfs' code will check to see if such an item exists and
+populate its in-memory state with the values found in the item. There can ever
+be at most one such item in the device tree.
 
 Key:
 key.objectid = 0
@@ -436,18 +449,20 @@ struct btrfs_dev_replace_item {
 		/* Uncorrectable read errors encountered while replacing device */
         __le64 num_uncorrectable_read_errors;
 }
-============================================================================
-BLOCK GROUP item
 
-While the extent tree defines the address space used for extent allocations for
-the entire file system, block groups allocate and define the parameters within
-that space. Every extent item or metadata item that describes an extent in use
-by the file system is apportioned from allocated block groups. Each block group
-can represent space used for system objects (e.g. the chunk tree and primary
-super block), metadata trees and items, or data extents. It is possible to
-combine metadata and data allocations within a single block group, though it is
-not recommended. This mixed allocation policy is typically only seen on
-filesystems smaller than approximately 10 GiB in size.
+
+BLOCK GROUP item
+----------------
+
+While the extent tree defines the address space used for extent allocations
+for the entire file system, block groups allocate and define the parameters
+within that space. Every extent item or metadata item that describes an extent
+in use by the file system is apportioned from allocated block groups. Each
+block group can represent space used for system objects (e.g. the chunk tree
+and primary super block), metadata trees and items, or data extents. It is
+possible to combine metadata and data allocations within a single block group,
+though it is not recommended. This mixed allocation policy is typically only
+seen on filesystems smaller than approximately 10 GiB in size.
 
 Key:
 key.type = BTRFS_BLOCK_GROUP_ITEM_KEY
@@ -468,26 +483,26 @@ Flags is a bitfield with following bits possible:
 
 Allocation policies:
 
-BTRFS_BLOCK_GROUP_DATA  - Whether this block group represents data
-BTRFS_BLOCK_GROUP_SYSTEM   - Whether this block group represents the system chunk
-BTRFS_BLOCK_GROUP_METADATA - Whether this block group represents metadata
+* BTRFS_BLOCK_GROUP_DATA  - Whether this block group represents data
+* BTRFS_BLOCK_GROUP_SYSTEM   - Whether this block group represents the system chunk
+* BTRFS_BLOCK_GROUP_METADATA - Whether this block group represents metadata
 
 Replication policies:
 
-BTRFS_BLOCK_GROUP_RAID0    - Data in this block group is striped
-BTRFS_BLOCK_GROUP_RAID1    - Data in this block group is mirrored
-BTRFS_BLOCK_GROUP_DUP      - Data in this block group is duplicated on the same drive
-BTRFS_BLOCK_GROUP_RAID10   - Data in this block group is mirrored across striped devices (raid 1 + 0)
-BTRFS_BLOCK_GROUP_RAID5    - Data in this block group is in Raid 5 mode
-BTRFS_BLOCK_GROUP_RAID6    - Data in this block group is in Raid 6 mode
+* BTRFS_BLOCK_GROUP_RAID0    - Data in this block group is striped
+* BTRFS_BLOCK_GROUP_RAID1    - Data in this block group is mirrored
+* BTRFS_BLOCK_GROUP_DUP      - Data in this block group is duplicated on the same drive
+* BTRFS_BLOCK_GROUP_RAID10   - Data in this block group is mirrored across striped devices (raid 1 + 0)
+* BTRFS_BLOCK_GROUP_RAID5    - Data in this block group is in Raid 5 mode
+* BTRFS_BLOCK_GROUP_RAID6    - Data in this block group is in Raid 6 mode
 
-===========================================================================
 
 FILE EXTENT DATA item
+---------------------
 
 Every file in BTRFS is described by any number of file extent data items.
-This is similar to how other filesystems describe ranges of file data
-(e.g. xfs/ext4). In BTRFS a file extent can be in one of 3 states:
+This is similar to how other filesystems describe ranges of file data (e.g.
+xfs/ext4). In BTRFS a file extent can be in one of 3 states:
 
 * BTRFS_FILE_EXTENT_INLINE - an extent item who can hold all of the actual file
 data in its body is considered an inline extent. In such cases data is read
@@ -571,8 +586,9 @@ struct btrfs_file_extent_item {
         __le64 num_bytes;
 }
 
-============================================================================
+
 EXTENT_ITEM
+-----------
 
 EXTENT_ITEM items describe the space allocated for metadata tree nodes and
 leafs as well as data extents. The space is allocated from block groups that
@@ -581,18 +597,19 @@ records, EXTENT_ITEM items also contain back references that can be used to
 repair the file system or resolve extent ownership back to a set of one or
 more file trees. Although EXTENT_ITEM items can be used to describe both DATA
 and TREE_BLOCK extents, newer file systems with the skinny metadata feature
-enabled at mkfs time use METADATA_ITEM items to represent metadata space instead.
-One extent record item exists for each extent allocated on a btrfs file system.
-Each item tracks the number of explicit references to the extent, records
-whether the extent contains file data or tree metadata and, if the latter, if
-the item contains a full back reference. It is followed by back reference
-records for each explicit reference held. [TODO: Document implied references]
+enabled at mkfs time use METADATA_ITEM items to represent metadata space
+instead.  One extent record item exists for each extent allocated on a btrfs
+file system.  Each item tracks the number of explicit references to the
+extent, records whether the extent contains file data or tree metadata and, if
+the latter, if the item contains a full back reference. It is followed by back
+reference records for each explicit reference held.
 
+[TODO: Document implied references]
 
 Key:
 key.objectid = logical address of the extent
 key.type = BTRFS_EXTENT_ITEM_KEY
-key.offset = length of extent 
+key.offset = length of extent
 
 struct btrfs_extent_item {
 		/* Number of references of this extent */
@@ -660,16 +677,16 @@ struct btrfs_shared_data_ref {
         __le32 count;
 }
 
-============================================================================
 
 METADATA extent item
+--------------------
 
 METADATA items exist only on filesystem which have enabled "skinny metadata"
-feature during mkfs time. They describe the space allocated for
-metadata tree nodes and leafs. The space is allocated from block groups that
-define metadata regions. In addition to functioning as basic allocation records,
-METADATA_ITEM items also contain back references that can be used to repair the
-file system or resolve extent ownership back to a set of one or more file trees.
+feature during mkfs time. They describe the space allocated for metadata tree
+nodes and leafs. The space is allocated from block groups that define metadata
+regions. In addition to functioning as basic allocation records, METADATA_ITEM
+items also contain back references that can be used to repair the file system
+or resolve extent ownership back to a set of one or more file trees.
 
 Key:
 key.objectid = logical address of start of extent
@@ -695,16 +712,19 @@ struct btrfs_extent_inline_ref {
 		 */
         __le64 offset;
 }
-============================================================================
+
+
 CHECKSUM ITEM
+-------------
 
 BTRFS (unless otherwise) instructed checksums every 4kb of every file written.
 Those checksums are stored in checksum items. All the checksum items key have
-identical values for their objectid and type fields, the only way to destinguish
-them is via their offset. It describes the starting offset on disk for which
-the checksum were calculated. Currently all checksums are CRC32C number and are
-4 bytes, but this might change in the future. Knowing this the end of the byte
-range which this csum item described can be derived with the following equations:
+identical values for their objectid and type fields, the only way to
+destinguish them is via their offset. It describes the starting offset on disk
+for which the checksum were calculated. Currently all checksums are CRC32C
+number and are 4 bytes, but this might change in the future. Knowing this the
+end of the byte range which this csum item described can be derived with the
+following equations:
 
 file item size / 4 = number of checksums
 offset + (number of checksums * 4096) = end logical address
@@ -727,16 +747,14 @@ struct btrfs_csum_item {
 	__u8 csum;
 }
 
-============================================================================
 
 FREE SPACE INFO item (v2 cache only)
+------------------------------------
 
 Each block group is represented in the free space tree by a free space info
-item that stores accounting information: whether the free space for this
-block group is stored as bitmaps or extents and how many extents of free
-space exist for this block group (regardless of which format is being
-used in the tree).
-
+item that stores accounting information: whether the free space for this block
+group is stored as bitmaps or extents and how many extents of free space exist
+for this block group (regardless of which format is being used in the tree).
 
 key.objectid = key.objectid of the block group this item represents (e.g. starting
 logical address of said group)
@@ -751,9 +769,9 @@ struct btrfs_free_space_info {
        __le32 flags;
 }
 
-============================================================================
 
 FREE SPACE EXTENT item (v2 cache only)
+--------------------------------------
 
 When prudent, the actual freespace in the freespace tree is described with
 keys, that do not have any associated data with them i.e. plain key strucutre.
@@ -763,22 +781,22 @@ key.objectid = start address of free space
 key.type = BTRFS_FREE_SPACE_EXTENT_KEY
 key.offset = length of this extent
 
-============================================================================
 
 FREE SPACE BITMAP item (v2 cache only)
+--------------------------------------
 
 When a blockgroup becomes very fragmented it might be more space-efficient to
-store the free space information in free space bitmap items. Those items consist
-of a key and their associated data is just an array of bytes. Each bit in the
-bitmap represents the state of a single sectorsize worth of data.
+store the free space information in free space bitmap items. Those items
+consist of a key and their associated data is just an array of bytes. Each bit
+in the bitmap represents the state of a single sectorsize worth of data.
 
 key.objectid = starting address of the region this item describes
 key.type = BTRFS_FREE_SPACE_BITMAP_KEY
 key.offset = length of the region described by this item
 
-============================================================================
 
 FREE SPACE HEADER (v1 cache only)
+---------------------------------
 
 The old (pre-freespace btree) free space cache uses free space header item to
 as a descriptor for a free space. Its contents consist of a
@@ -814,14 +832,16 @@ struct btrfs_free_space_entry {
 		/* Whether it's BTRFS_FREE_SPACE_BITMAP or BTRFS_FREE_SPACE_EXTENT */
         __u8 type;
 }
-============================================================================
+
 
 DIR item
+--------
 
-Dir items are used for both standard user-visible directories and internal directories,
-used to manage named extended attributes. For every visible name in a filesystem
-there is a corresponding DIR item. This item is also used to house the XATTR for
-a file, in this case there is one DIR item for every xattr attribute.
+Dir items are used for both standard user-visible directories and internal
+directories, used to manage named extended attributes. For every visible name
+in a filesystem there is a corresponding DIR item. This item is also used to
+house the XATTR for a file, in this case there is one DIR item for every xattr
+attribute.
 
 Key:
 key.objectid = inode of directory containing this entry
@@ -852,40 +872,41 @@ truct btrfs_dir_item {
 
 In case the dir item doesn't describe an XATTR, type can be one of:
 
-BTRFS_FT_REG_FILE - Indicates a regular file.
-BTRFS_FT_DIR - The target object is a directory
-BTRFS_FT_CHRDEV - The target object is an INODE_ITEM representing a character device node.
-BTRFS_FT_BLKDEV - The target object is an INODE_ITEM representing a block device node.
-BTRFS_FT_FIFO - The target object is an INODE_ITEM representing a FIFO device node.
-BTRFS_FT_SOCK - The target object is an INODE_ITEM representing a socket device node.
-BTRFS_FT_SYMLINK - The target object is an INODE_ITEM representing a symbolic link.
+* BTRFS_FT_REG_FILE - Indicates a regular file.
+* BTRFS_FT_DIR - The target object is a directory
+* BTRFS_FT_CHRDEV - The target object is an INODE_ITEM representing a character device node.
+* BTRFS_FT_BLKDEV - The target object is an INODE_ITEM representing a block device node.
+* BTRFS_FT_FIFO - The target object is an INODE_ITEM representing a FIFO device node.
+* BTRFS_FT_SOCK - The target object is an INODE_ITEM representing a socket device node.
+* BTRFS_FT_SYMLINK - The target object is an INODE_ITEM representing a symbolic link.
 
-============================================================================
 
 DIR INDEX item
+--------------
 
 Dir index items are used when looking up entries in a directory. Their data
-portion is identical to that of the DIR item. The only difference is in the key
-used to lookup the item. This duplication is necessary to ensure good readdir
-perfromance. Since readdir requires monotonicaly incrementing indices, the
-key's offset field is modified to contain a counter.
+portion is identical to that of the DIR item. The only difference is in the
+key used to lookup the item. This duplication is necessary to ensure good
+readdir perfromance. Since readdir requires monotonicaly incrementing indices,
+the key's offset field is modified to contain a counter.
 
 Key:
 key.objectid = inode number of directory we are looking up into
 key.type = BTRFS_DIR_INDEX_KEY
 key.offset = index id in the directory. Indices start at 2 (due to '.' and '..)
 
-============================================================================
 
 INODE REF item
+--------------
 
 This item stores a reference to the parent directory for a file. It's a
 reliability aide which allows the file system to find out the parent directory
 of a recovered file. There is one such item per file in the filesystem.
 Additionally it also stores all hardlink to the file in a btrfs_inode_ref
-structure. Files with hard links in multiple directories have multiple reference
-items, one for each parent directory. Files with multiple hard links in the
-same directory pack all of the links' filenames into the same reference item.
+structure. Files with hard links in multiple directories have multiple
+reference items, one for each parent directory. Files with multiple hard links
+in the same directory pack all of the links' filenames into the same reference
+item.
 
 Key:
 key.objectid = inode number of file
@@ -902,17 +923,17 @@ struct btrfs_inode_ref {
         /* Variable length, non-null terminated string of length 'name_len' */
 }
 
-============================================================================
 
 EXTENDED INODE REF item
+-----------------------
 
-The total number of inode refs that a given inode number / parent
-inode number tuple can have is limited by our leaf size. Unfortunately
-this limits the maximum number of hardlinks we can have. Extended
-inode refs fix this limitation by using a key offset that's a hash of
-the link name and parent inode number. Extended refs don't replace the
-existing ref array. An inode gets an extended ref for a given link
-only after the ref array has been filled.
+The total number of inode refs that a given inode number / parent inode number
+tuple can have is limited by our leaf size. Unfortunately this limits the
+maximum number of hardlinks we can have. Extended inode refs fix this
+limitation by using a key offset that's a hash of the link name and parent
+inode number. Extended refs don't replace the existing ref array. An inode
+gets an extended ref for a given link only after the ref array has been
+filled.
 
 Key:
 key.objectid = inode number of file
@@ -933,12 +954,12 @@ struct btrfs_inode_extref {
 	__u8   name[0];
 } __attribute__ ((__packed__));
 
-============================================================================
 
 QGROUP STATUS item
+------------------
 
-Used to hold information about the qgroup states for a particular subvolume. This
-implies there is one such item for every qgroup tree.
+Used to hold information about the qgroup states for a particular subvolume.
+This implies there is one such item for every qgroup tree.
 
 Key:
 key.objectid = 0
@@ -967,16 +988,17 @@ truct btrfs_qgroup_status_item {
         __le64 rescan;
 }
 
-BTRFS_QGROUP_STATUS_FLAG_ON [0x1] - Subvolume quota turned on.
-BTRFS_QGROUP_STATUS_FLAG_RESCAN [0x2] - Signals whether rescan is in progress.
-BTRFS_QGROUP_STATUS_FLAG_INCONSISTENT [0x4] - Turned on when some qgroup entries
-are known to be out of date, either because the configuration has changed in a
-certain way that requires rescan or because the fs has been mounted with a
-non-qgroup-aware version.
-Turning qouta off and on again makes it inconsistent, too.
+* BTRFS_QGROUP_STATUS_FLAG_ON [0x1] - Subvolume quota turned on.
+* BTRFS_QGROUP_STATUS_FLAG_RESCAN [0x2] - Signals whether rescan is in progress.
+* BTRFS_QGROUP_STATUS_FLAG_INCONSISTENT [0x4] - Turned on when some qgroup
+  entries are known to be out of date, either because the configuration has
+  changed in a certain way that requires rescan or because the fs has been
+  mounted with a non-qgroup-aware version.  Turning qouta off and on again
+  makes it inconsistent, too.
 
-============================================================================
+
 QGROUP INFO item
+----------------
 
 Items of this type are used to track the amount of space used by a particular
 subvolume. There is one such item per subvolume.
@@ -1003,8 +1025,10 @@ struct btrfs_qgroup_info_item {
 		/* Exlucisve bytes compressed */
         __le64 excl_cmpr;
 }
-============================================================================
+
+
 QGROUP LIMIT item
+-----------------
 
 Configured qgroup limits are persisted on disk by the QGROUP limit items. When
 some data is to be written on disk the usage space in QGROUP INFO items are
@@ -1031,30 +1055,32 @@ struct btrfs_qgroup_limit_item {
 
 Flags:
 
-BTRFS_QGROUP_LIMIT_MAX_RFER [0x1] Limit on maximum referenced data enabled
-BTRFS_QGROUP_LIMIT_MAX_EXCL [0x2] Limit on maximum eclusive data enabled
-BTRFS_QGROUP_LIMIT_RSV_RFER [0x4] Unused
-BTRFS_QGROUP_LIMIT_RSV_EXCL [0x8] Unused
-BTRFS_QGROUP_LIMIT_RFER_CMPR [0x10] (Unused) Limit on maximum compressed referenced data enabled
-BTRFS_QGROUP_LIMIT_EXCL_CMPR [0x20] (Unused) Limit on maximum exclusive compressed data size enabled
+* BTRFS_QGROUP_LIMIT_MAX_RFER [0x1] Limit on maximum referenced data enabled
+* BTRFS_QGROUP_LIMIT_MAX_EXCL [0x2] Limit on maximum eclusive data enabled
+* BTRFS_QGROUP_LIMIT_RSV_RFER [0x4] Unused
+* BTRFS_QGROUP_LIMIT_RSV_EXCL [0x8] Unused
+* BTRFS_QGROUP_LIMIT_RFER_CMPR [0x10] (Unused) Limit on maximum compressed referenced data enabled
+* BTRFS_QGROUP_LIMIT_EXCL_CMPR [0x20] (Unused) Limit on maximum exclusive compressed data size enabled
 
-============================================================================
+
 QGROUP RELATION item
+--------------------
 
 Qgroup relation items are used to record a parent<=>child relantionship in the
 quota tree. Those items are also created in pairs. In order to distinguish
-child from parents a numerical comparison needs to be performed of .objectid and
-.offset. The key assumption is that child qgroups (which inherit the id of the
-subvolume they represent) will have increasing objectids. Those items have no
-body, only a key.
+child from parents a numerical comparison needs to be performed of .objectid
+and .offset. The key assumption is that child qgroups (which inherit the id of
+the subvolume they represent) will have increasing objectids. Those items have
+no body, only a key.
 
 Key:
 key.objectid = parent qgroup
 key.type = BTRFS_QGROUP_RELATION_KEY
 key.offset = child qgroup
 
-============================================================================
+
 ORPHAN item
+-----------
 
 ORPHAN items are used to track inodes which are being deleted/truncated. They
 are added to the filesystem root of an inode at the beginning of a delete or
@@ -1067,8 +1093,10 @@ Key:
 key.objectid = BTRFS_ORPHAN_OBJECTID
 key.type = BTRFS_ORPHAN_ITEM_KEY
 key.offset = inode number
-============================================================================
+
+
 DIR LOG item
+------------
 
 TODO: Explain what exactly this item logs and how the key type varies and how
 it's supposed to be used in the context of tree logging.
@@ -1083,12 +1111,13 @@ struct btrfs_dir_log_item {
         __le64 end;
 }
 
-============================================================================
-BALANCE item
 
-BALANCE item is inserted when a balancing operation commences. Its purpose is to
-enable balancing to continue in case a crash occurs. It stores the parameters
-passed from userspace via the ioctl interface.
+BALANCE item
+------------
+
+BALANCE item is inserted when a balancing operation commences. Its purpose is
+to enable balancing to continue in case a crash occurs. It stores the
+parameters passed from userspace via the ioctl interface.
 
 Key:
 key.objectid = BTRFS_BALANCE_OBJECTID
