@@ -1,0 +1,41 @@
+Bio submission overview
+=======================
+
+Since btrfs has support for various raid levels it's submission path is more
+involved than a traditional filesystem. For the purposes of this document a
+raid1-based filesystem is going to be considered.
+
+
+Submission
+----------
+
+The upper layers of the filesystem would create a single bio for a particular
+logical address. However, due to the way btrfs manages its space the first
+thing that needs to happen is map this logical address to physical one.
+Additionally, depending on the raid profile of the portion of disk where the
+requested data falls in it's possible that the single io is actually going to
+turn into multiple io requestes.
+
+This mapping occurs in btrfs_map_bio. First a btrfs_bio struct is created.  It
+holds information about the underlying properties of the range that we want to
+interact with. This is information such as how many stripes (i.e copies of the
+data there are on disk), length of the stripe and copies of some value of the
+initial bio which are going to be replaced. Then for every stripe a bio is
+going to be created. Those multiple bios constitute the io for reading/writing
+data. They will also share the btrfs_bio structure and use it to record
+errors.  During submission of each bio (including the original one) the values
+of bi_iter.bi_sector, bi_end_io and bi_private are modified to correspond to
+the location of the requested data on each stripe.
+
+
+End IO handling
+---------------
+
+All the submitted bios have their bi_end_io point to btrfs_end_bio. So for
+every completed stripe the status is checked and if an error occurred this is
+printed. Then when the last bio for this io is completed (as indicated by
+bbio->stripes_pending becoming 0) the total errors are checked against the
+tolerated count (i.e. raid1 can tolerate 1 error since it has 2 copies of
+data).  If the error don't exceed the tolerance value then the io is completed
+via btrfs_end_bbio which restores the values to the initial bio and calls
+bio_endio.

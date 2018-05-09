@@ -1,0 +1,102 @@
+Delayed inodes
+==============
+
+The delayed inodes are a mechanims to avoid unnecessary IO and metadata
+updates regarding file creation and deletion.  The operations are first
+performed only in memory, and when the transaction commits, the respective
+metadata structures are created.  This can help in situations where many
+temporary files are created and deleted in quick succession.
+
+Filesystem operations like readdir need to check the delayed lists first, but
+not all operations on an inode are implemented as delayed.  The following
+operations are boosted via delayed operations:
+
+* Modification of INODE_ITEM
+* Removal of INODE_REF item
+* Directory index
+
+
+Modification of INODE_ITEM
+--------------------------
+
+There are quite a lot of operations that a filesystem performs which modify
+the state of the in-memory copy of struct inode. In turn those modification
+should eventually be synced to disk to keep the filesystem consistent. In
+BTRFS the function which performs this syncing between the generic inode and
+the internal representation of an inode (INODE_ITEM) is called
+btrfs_update_inode.  Everytime we want to sync the state to an INODE_ITEM  a
+call to btrfs_delayed_update_inode is performed which captures current state
+in an in-memory btrfs_inode_item and also reserves enough space for writing
+this item on-disk during transaction commit. It's important to note that there
+are certain conditions which would prevent the delayed modification of an
+inode, namely:
+
+* in case the inode is a free space inode (hidden from ordinary users) then
+we don't update it via the delayed-inode mechanism
+
+* in case we are performing log recovery (BTRFS_FS_LOG_RECOVERING flag is set)
+delayed updates are also skipped, since they can lead to a deadlock
+
+* inodes, part of the relocation tree are also skipped.
+
+
+Removal of INODE_REF item
+-------------------------
+
+In case we have single-link inodes (i.e. they have no hard-links) the delayed
+inode can exploit the fact that INODE_REF is inserted at the same as the
+INODE_ITEM. So during unlink we can check if the condition is met and if so
+just call btrfs_delayed_delete_inode_ref() to signal we'd like to remove the
+inode ref.
+
+
+Directory index
+---------------
+
+Everytime an entry is added to a directory btrfs creates 2 items. One is the
+DIR which represents the entry in the directory. It also creates a duplicate
+DIR INDEX item which is used by readdir.  Thanks to delayed inode btrfs is
+able to delay the insertion of the DIR_INDEX item until transaction commit. In
+the mean time in addition to querying the btree for dir items, btrfs'
+implementation of readdir also enumerates the entries in the delayed inode
+tree.
+
+Implementation
+==============
+
+Overview
+--------
+
+The implementation relies on a delayed root object into the file system, that
+uses two lists to manage delayed nodes. There is one delayed node coresponding
+to every directory/file created in the filesystem. Delayed nodes are anchored
+in the delayed root by 2 lists - prepare_list and node_list. Items on the
+former list are only processed by the async worker, that's invoked when
+certain thresholds are crossed. The nodes on the latter are processed when
+either btrfs_run_delayed_items or btrfs_run_delayed_items_nr is called.
+
+
+Delayed node
+------------
+
+Inode updates are managed by the btrfs_delayed_update_inode function, it
+sets the BTRFS_DELAYED_NODE_INODE_DIRTY flag, meaning this delayed node has
+dirty inode data and needs to be comitted on-disk during next processing cycle
+of this delayed node.
+
+Inode ref deletion is faciliated by the btrfs_delayed_delete_inode_ref function,
+it also uses a flag (BTRFS_DELAYED_NODE_DEL_IREF) signalling the need to delete
+the inode ref item.
+
+For readdir the implementation is easy. Each delayed node stores the index
+items to be inserted in a rb-tree, indexed by the btrfs_key of the respective
+item. So during readdir enumeration in addition to consulting the on-disk btree,
+the code will also consult the pending items for insertion. Similarly, when
+a directory index item has been slated for deletion the readdir code will check
+to see if any of the on-disk items are also present in the to-be-deleted rb-tree,
+in this case it will just skip them. The list of items is being managed by
+btrfs_insert_delayed_dir_index for items to be inserted and btrfs_delete_delayed_dir_index
+
+
+TODO:
+delayed node balance

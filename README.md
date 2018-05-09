@@ -25,7 +25,6 @@ Examples of topics to cover:
 * implementation
   * interaction with pagecache (data and metadata), extents vs pages
   * delayed refs
-  * delayed inodes
   * orphan files
   * locking
   * compression write out
