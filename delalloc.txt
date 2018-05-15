@@ -144,3 +144,10 @@ important things that this function performs is calling either
 btrfs_mark_extent_written (in case we just wrote to a PREALLOC extent) or
 calling insert_reserved_file_extent. And adding the necessary checksums to the
 csum tree via add_pending_csums.
+
+It's important to note that the end io context is already asynchronous and
+arbitrary and initially it might seems queueing yet another asynchornous job
+from there is redundant. The matter of fact is it's not, this is required since
+modifying the btree is a pretty heavy operation and in order to avoid deadlocks
+as well as not block further ios from being completed we need to do this
+processing from a different thread than the end io routine.
