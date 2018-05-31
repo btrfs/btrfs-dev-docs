@@ -37,11 +37,38 @@ struct btrfs_disk_key {
 Btree internal nodes
 ~~~~~~~~~~~~~~~~~~~~
 
-<TODO>
+All nodes which do not contain actual data and whose level is higher than 0
+are internal nodes or sometimes referred to as simply "nodes". They are
+represented as a struct btrfs_node. Conceptually a node consists of a header,
+followed by an array of btrfs_key_ptr structures:
 
+| block header | key1 | key2 | keyN |
+
+The block header is identical to the block header of a leaf node (see below).
+Each key is represented by the following struct:
+
+struct btrfs_key_ptr {
+	/* This is the lowest key in the block pointed to by this pointer */
+	struct btrfs_disk_key key;
+
+	/* Logical address of the block pointed at */
+	__le64 blockptr;
+
+	/* Is the generation this block pointer was modified */
+	__le64 generation;
+}
+
+Following invariant can be extrapolated from that:
+
+1. For a given key pointer in a node the actual btrfs keys which can be found
+in it are defined by the :
+ a) btrfs_key_ptr.key - the starting key
+ b) btrfs_key_ptr.key of the next key pointer - the end key in the range
 
 Btree leaf nodes
 ~~~~~~~~~~~~~~~~
+Data in btrfs is always contained in the leaf nodes of the btrees. Those nodes
+always have a level of 0 and are simply referred to as "leaves".
 
 Conceptually a leaf node will have the following structure:
 
