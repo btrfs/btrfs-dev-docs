@@ -596,12 +596,12 @@ define the appropriate regions. In addition to functioning as basic allocation
 records, EXTENT_ITEM items also contain back references that can be used to
 repair the file system or resolve extent ownership back to a set of one or
 more file trees. Although EXTENT_ITEM items can be used to describe both DATA
-and TREE_BLOCK extents, newer file systems with the skinny metadata feature
-enabled at mkfs time use METADATA_ITEM items to represent metadata space
-instead.  One extent record item exists for each extent allocated on a btrfs
-file system.  Each item tracks the number of explicit references to the
-extent, records whether the extent contains file data or tree metadata and, if
-the latter, if the item contains a full back reference. It is followed by back
+and tree block extents, newer file systems with the skinny metadata feature
+enabled at mkfs time, use the distinct METADATA_ITEM items to represent metadata
+extents instead. One extent record item exists for each extent allocated on a btrfs
+file system. Each item tracks the number of explicit references to the extent,
+records whether the extent contains file data or tree metadata and, if the
+latter, if the item contains a full back reference. It is followed by back 
 reference records for each explicit reference held.
 
 [TODO: Document implied references]
@@ -629,7 +629,7 @@ struct btrfs_extent_item {
 * BTRFS_EXTENT_FLAG_TREE_BLOCK [0x2] - Flag to indicate that the following record
  refers to a metadata tree block
 
-	* BTRFS_BLOCK_FLAG_FULL_BACKREF [0x80] - Tree block back reference contains a
+* BTRFS_BLOCK_FLAG_FULL_BACKREF [0x80] - Tree block back reference contains a
  full back reference.
 
 As stated previously  the btrfs_extent_item is generally followed by multiple
@@ -643,8 +643,6 @@ struct btrfs_extent_inline_ref {
         __le64 offset;
 }
 
-//Mention something about non-inlined backrefs
-
 Backrefs are destinguished based on :
 1. whether they contain data or metadata  (as defined by btrfs_extent_item.flags)
 2. whether the extent is shared or not (as defined by btrfs_extent_inline_ref.type)
@@ -656,11 +654,13 @@ The content of this backref is a btrfs_extent_data_ref strucutre that overlaps
 with the btrfs_extent_inline_ref.offset field:
 
 struct btrfs_extent_data_ref {
-		/* Subvolume tree id owning the extent */
+		/* Subvolume tree id that references the extent */
         __le64 root;
-		/* inode number for the file containing the extent */
+		/* inode number of the file referencing the extent in the given root */
         __le64 objectid;
-		/* Byte offset for the extent within the file */
+		/* Byte offset for the extent within the file in case partial
+		 * sharing 
+		 */
         __le64 offset;
 		/* reference count for the extent */
         __le32 count;
@@ -677,6 +677,29 @@ struct btrfs_shared_data_ref {
         __le32 count;
 }
 
+Ext refs:
+
+In case an extent item doesn't have enough space to store all the references to 
+it, the filesystem reverts to storing the so called extref. An extref is an 
+additional item which is recorded in the extent tree. The key/item body depend 
+on the kind of reference being tracked.
+
+For ordinary data extents it has the following format: 
+
+key.objectid = logical bytenr of the extent being referenced
+key.type = BTRFS_EXTENT_DATA_REF_KEY
+key.offset = crc32c hash of [root, objectid, offset]
+
+Item body is `struct btrfs_extent_data_ref`, see above for detailed info. 
+
+For shared data extents it's: 
+
+key.objectid = logical bytenr of the extent being referenced
+key.type = BTRFS_SHARED_DATA_REF_KEY
+key.offset = the bytenr of the btree leaf containing the BTRFS_EXTENT_DATA_KEY
+item for this extent reference
+
+Item body is `struct btrfs_shared_data_ref`
 
 METADATA extent item
 --------------------
