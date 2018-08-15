@@ -911,7 +911,8 @@ Dir index items are used when looking up entries in a directory. Their data
 portion is identical to that of the DIR item. The only difference is in the
 key used to lookup the item. This duplication is necessary to ensure good
 readdir perfromance. Since readdir requires monotonicaly incrementing indices,
-the key's offset field is modified to contain a counter.
+the key's offset field is modified to contain a counter, which is incremented
+everytime a new entry appears in a directory.
 
 Key:
 key.objectid = inode number of directory we are looking up into
