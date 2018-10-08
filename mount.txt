@@ -1,0 +1,68 @@
+Mounting in BTRFS is more complicated than other prime linux filesystem due to 
+supporting multiple devices and the support of subvolumes. The process of
+mounting begins even before the  'mount' command is issued with the insertion
+of a btrfs disk into the filesystem. This disk can be either a standalone
+filesystem or part of a multi-disk fs layout. Generally speaking the process of
+mounting can be separated in 2 stages:
+   1. Scanning the inserted disk - this is usually performed by udev rules. 
+   2. Actual mounting of the file system. 
+
+
+Device scanning/identification
+=====================================================
+Device scanning is triggered by issuing the DEVICE_SCAN ioctl to the 
+'/dev/btrfs-control' file. This is usually invoked either by the udev 
+management system or the user can do it via the 'btrfs' tool. Scanning is the 
+process of parsing the superblock of the device and identifying the btrfs fs
+that this disk belongs to. The call chain is: 
+
+btrfs_control_ioctl
+ btrfs_scan_one_device
+  btrfs_scan_one_device
+   device_list_add
+
+It's in device_list_add where the majority of the magic happens. The first 
+thing this function does is try to find a struct btrfs_fs_devices among the 
+registered btrfs filesystems on the machine. This is done via find_fsid. As the 
+name suggests filesystems are identified by their FSID, which is a UUIDv4 
+identifier that is set during mkfs time and that is recorded in the superblock
+of every disk. So if the currently scanned disk is the first with the given 
+FSID when find_fsid will return NULL and a new btrfs_fs_device struct will be 
+allocated and initialised with the given FSID, alternatively if it's found a 
+reference is returned to the given struct btrfs_fs_devices.
+
+In the case a new structure has to be created this is done via alloc_fs_devices
+which just allocates the memory, initialises some member and copies the 
+respective FSID from the disk's superblock to the newly allocated structure. 
+Finally this structure is added to the global (for btrfs) list of registed 
+filesystems pointed by the 'fs_uuids' global variable. 
+
+When a new fs_devices is allocated it's implied that the device being scanned
+is also seen for the first time. This neccesiates also initialising an 
+in-memory structure representing it. This is done by first calling
+btrfs_alloc_device with the devid and dev uuid of the given device to initialise
+the respective members of the in-memory struct. The process finishes with 
+creating a bi-directional relationship between the btrfs_device and
+btrfs_fs_devices structure by adding the device to the fs_devices. 
+
+As mentioned previously device_list_add also handles the case when a device is 
+added to an already existing filesystem. In this case find_fsid will return the
+appropriate btrfs_fs_devices struct and device_list_add will proceed to try and
+find a btrfs_device structure pertaining to the currently scanned device. The 
+latter is implemented by find_device and the search criteria are devid and/or 
+device uuid. If a matching btrfs_device is not found then a new one is initiliased
+as described previously. Alternatively, if the found btrfs_device doesn't have
+a device path set or the path is different than the device currently being 
+registeredi it is updated to the path of the currently scanned device. The path
+being different can occur if a device is initially scanned, and later disappear
+and reappears with a different name i.e /dev/vdb reappearing as /dev/vdd.
+
+As devices are added to the system they will eventually be attached to the 
+respective btrfs_fs_devices struct. Thus the end state is that for every distinct
+filesystem known to the system the devices that constitute it are going to be 
+grouped together. We'll see how this is used during actual mounting next. 
+
+Actual mounting
+=============================================
+
+
