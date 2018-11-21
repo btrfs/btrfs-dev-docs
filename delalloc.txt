@@ -69,11 +69,11 @@ and submitting the page for writeback. This is performed in the following
 sequence:
 
 1. writepage_delalloc is called. This function goes through the io_tree of the
-inode whose page we are writing and tries to find every range which is marked
-DELALLOC. This is done by calling find_lock_delalloc_range. Remember that the
-range was initialised by the buffered write path. Once such a range is found,
-as defined by delalloc_start/delalloc_end variables they are passed to the
-->fill_delalloc callback function. This function pointer really points to
+inode whose page we are writing and finds a range marked with DELALLOC starting
+at the offset in the written page. This is done by calling find_lock_delalloc_range.
+Remember that the range was initialised by the buffered write path. Once such
+a range is found, as defined by delalloc_start/delalloc_end variables they are passed to the
+btrfs_run_delalloc_range(). This function pointer really points to
 run_delalloc_range, which is a simple dispatch function. The purpose of the
 dispatch function is to decide which routine to call to "fill the delalloc
 range". The decision is based on whether NODATACOW is enabled (run_delalloc_nocow
@@ -100,16 +100,16 @@ triggered.
 until we've submitted write requests for all extents within the requested range.
 The sequence of submission consists of :
 
-   1. btrfs_get_extent - to get the newly created extents by fill_delalloc
-   callback and use that extent information to calculate the amount that needs
+   1. btrfs_get_extent - to get the newly created extents by btrfs_run_delalloc_range
+   and use that extent information to calculate the amount that needs
    to be written.
    2. Once all of this is done, submit_extent_page is called. This function
    builds the require 'bio' structs and sets endio routine to
    end_bio_extent_writepage.
 
 
-<TODO: Discuss writepage_start_hook and writepage_end_io_hook>
-Following this
+<TODO: Discuss btrfs_writepage_cow_fixup and
+btrfs_writepage_endio_finish_ordered>
 
 
 End IO path
