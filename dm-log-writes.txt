@@ -1,0 +1,185 @@
+Introduction
+============
+
+dm-log-writes is a device mapper target which is pretty useful for filesystem
+verification and testing.
+
+In short, dm-log-writes provides the ability to inspect the device after each
+bio(*)
+
+We can use dm-log-writes to verify fsync behavior, but personally speaking
+it's more handy to verify each flush/fua operation.
+
+Details can be fetched from kernel doc:
+`/Documentation/device-mapper/log-writes.txt`
+
+*: After block scheduler, which means bios can be merged/discarded.
+
+Usage
+=====
+
+The usage is split into 2 parts: Log and Replay.
+
+[[Log]]
+1) Setup dm-log-writes
+Needs 2 deivce, one for real device, one for log.
+
+Please note that, since we record all bios into log device, it's recommended
+to have large enough (*) and fast log device
+```
+table="0 $(blockdev --getsz $dev) log-writes $dev $log_dev"
+dmsetup create log --table "$table"
+```
+Then do operation on /dev/mapper/log.
+
+*: When log device is full, all later incoming bios will just be discarded,
+later bios can't be replay.
+
+2) Create initial mark
+Normally we don't want to verify operations which are known to be OK, like
+mkfs.
+```
+mkfs.btrfs -f /dev/mapper/log
+dmsetup message log 0 mark mkfs
+```
+
+Normally we only need one initial mark, and check all later operations.
+Also it's still possible to create multiple mark.
+
+3) Do operation
+```
+mount /dev/mapper/log /mnt/btrfs
+# do opeartions
+```
+
+4) Finish
+```
+umount /dev/mapper/log
+dmsetup remove log
+```
+
+Keep $log_dev safe (untouched) as later replay all needs it.
+($dev is not that important and can be replace to any device larger than
+original $dev)
+
+[[Replay]]
+
+5) Easy run
+Replay is done by user space tool `replay-log`, it can be found here:
+https://github.com/josefbacik/log-writes
+
+Or included one in fstests:
+src/log-writes/replay-log
+
+The easier way is to use the tool to replay and check each FUA/FLUSH bio:
+$ replay-log --log $log_dev --replay $dev --start-mark mkfs \
+	     --fsck "btrfs check $dev" --check fua
+
+Above command will stop replay and run "btrfs check $dev" after replying each
+FUA bio after mark 'mkfs'.
+
+This will auto pause if anything wrong is detected by "btrfs check".
+
+Please note that, if btrfs check has some bug (mostly return value bug) and
+doesn't return correct value, some problem may not cause pause, and it's
+always recommended to have a quick glance of the output.
+
+
+6) Advanced run
+6.1) Verify each bio
+Replay-log can provide verbose output for each bio using -v.
+(At the time of writing, josefbacik/log-writes has human-readable enhance on
+verbose output, like METADATA flag)
+
+Result will be:
+```
+replaying 1436: sector 128, size 4096, flags 18(FUA|METADATA)
+replaying 1437: sector 2828952, size 4096, flags 0(NONE)
+replaying 1438: sector 2833176, size 20480, flags 0(NONE)
+replaying 1439: sector 2833216, size 57344, flags 0(NONE)
+replaying 1440: sector 2832872, size 81920, flags 0(NONE)
+replaying 1441: sector 2833032, size 73728, flags 0(NONE)
+replaying 1442: sector 2833376, size 4096, flags 0(NONE)
+replaying 1443: sector 2833384, size 98304, flags 0(NONE)
+replaying 1444: sector 2833328, size 24576, flags 0(NONE)
+replaying 1445: sector 1780320, size 16384, flags 16(METADATA)
+replaying 1446: sector 1780096, size 65536, flags 16(METADATA)
+replaying 1447: sector 1780384, size 16384, flags 16(METADATA)
+replaying 1448: sector 2042240, size 65536, flags 16(METADATA)
+replaying 1449: sector 2042464, size 16384, flags 16(METADATA)
+replaying 1450: sector 2042528, size 16384, flags 16(METADATA)
+replaying 1451: sector 2042688, size 16384, flags 16(METADATA)
+replaying 1452: sector 1780544, size 16384, flags 16(METADATA)
+replaying 1453: sector 0, size 0, flags 1(FLUSH)
+```
+
+Each output has the following format:
+```
+replaying 1453: sector 0, size 0, flags 1(FLUSH)
+          ^            ^       ^        ^
+          |            |       |        flags, both numeric and human-readable
+          |            |       size, in *bytes*
+          |            device offset, in *SECTOR* (512 bytes)
+          entry number of this bio
+```
+Which can be used to verify each write.
+
+6.2) Manually replay
+With above sequence number, one could manually replay and pause at certain
+bio.
+
+To pause at entry 1436 (replay all entries until 1436, with 1436 replayed)
+```
+$ replay-log --log $log_dev --replay $dev --limit 1437
+                                                  ^^^^
+                                               Last entry won't be replayed.
+                                               So we need +1 for limit
+```  
+
+To only replay bios after 'mkfs' mark until 1436 (including 1436)
+Here we don't have --entry-entry option, so we need to use --limit.
+We need to get the entry number of 'mkfs' mark first.
+```
+$ replay-log --log $log_dev --find --end-mark mkfs
+1383
+$ replay-log --log $log_dev --replay $dev --start-mark mkfs \
+		--limit $((1436 - 1383))
+```
+
+NOTES
+=====
+For btrfs, only 2 time points really make sense: FUA and FLUSH.
+At FLUSH, we should have all old trees readable, while all new trees are
+already written to disk.
+At FLUSH we could verify the metadata CoW is actually working as expected.
+
+At FUA, we have super block updated, all new trees should be accessible.
+
+It's still possible to run btrfs check on each write, but it will just be a
+waste of time for most case.
+
+For journal based filesystems (ext4/xfs), their fsck tends to report dirty
+journal as error.
+So it can't be checked just like btrfs.
+It needs to replay the log first before calling fsck.
+
+Known bugs
+==========
+
+To be accurate, not bugs about dm-log-writes or its user space tool, but bugs
+(mostly minor) detected in btrfs:
+
+1) Free space cache (v1) difference
+   Btrfs can call btrfs_reserve_extent() out of a transaction, but
+   btrfs_release_extent() can only be called inside a transaction.
+
+   So free space cache can have less free space than real.
+   It's OK and will be detected by kernel and that cache will get discarded.
+
+2) Free space cache (v1) file CoW
+   Although free space cache file has NODATACOW flag, it still get CoWed on
+   most update, which explains why no generation related cache problem is
+   reported even checked at FLUSH bio.
+
+3) File extent discount if using notreelog
+   Another race related to DIO and buffered write.
