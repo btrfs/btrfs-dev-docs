@@ -166,7 +166,7 @@ Type of data item: struct btrfs_inode_item
 Item data:
 
 struct btrfs_inode_item {
-        __le64 generation; /* nfs style generation number */
+        __le64 generation; /* nfs style generation number, essentially transid when the inode was created */
         __le64 transid;    /* transid that last touched this inode */
         __le64 size;       /* size of file in bytes */
         __le64 nbytes;     /* Size allocated to this file in bytes, 0 for dirs, Sum of all 'offset' fields for EXTENT_DATA items */
