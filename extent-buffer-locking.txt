@@ -1,0 +1,169 @@
+Extent buffer locking
+=====================
+
+The locking is using a custom scheme that allows more flexibility than
+ordinary locking primitives provided by linux.
+
+Requirements:
+
+- reader/writer exclusion
+- writer/writer exclusion
+- reader/reader is ok
+- spinning lock semantics
+- blocking lock semantics
+- one-level nesting, allowing read lock to be held by the same task that
+  already has the lock for write
+- trylock
+
+The extent buffer locks (also called tree locks) manage access to eb data. We
+want concurrency of many readers and safe updates. The underlying locking is
+done by read-write spinlock and the blocking part is implemented using
+counters and wait queues.
+
+Spinning semantics -- the lowlevel rwlock is held so all other threads that
+want to take it are spinning on it.
+
+Blocking semantics -- the lowlevel rwlock is not held but the counter denotes
+how many times the blocking lock was held; sleeping is possible
+
+Write lock allways allows only one thread to access the data
+
+
+Simple spinning write
+---------------------
+
+	btrfs_tree_lock			(write_lock)
+	... change eb data
+	btrfs_tree_unlock		(write_unlock)
+
+In a simple view what a rwlock does, protecting the critical section, all
+other readers or writers are spinning on the lock. If the lock has been
+set to blocking before, the task has to wait until it's unlocked (will be
+woken up on blocking task unlock).
+
+shareeable with: none
+exclusive with: spinning writers, blocking writers,
+                spinning readers, spinning readers
+
+
+Simple spinning read
+--------------------
+
+	btrfs_tree_read_lock		(read_lock)
+	... read eb data
+	btrfs_tree_read_unlock		(read_unlock)
+
+dtto, rwlock for read, allowing multiple readers take the rwlock and read the
+eb concurrently, while keeping writers spinning. Blocking semantics of readers
+does not make any difference and allows all readers in.
+
+sheareable with: spinning readers, blocking readers
+exclusive with: spinning writers, blocking writers
+
+
+Blocking read
+-------------
+
+	btrfs_tree_read_lock		(read_lock)
+	btrfs_set_lock_blocking_read	(read_unlock, blocking_readers++)
+	... read eb data
+	btrfs_tree_read_unlock_blocking	(blocking_readers--, wake readers)
+
+The rwlock is not held during the access to the eb data but prevents writers.
+Unlock wakes up one reader when the counter reaches zero, ie. there are no
+active blocking readers. The state of the rwlock is not relevant here.
+
+???
+
+shareeable with: spinning readers, blocking readers
+exclusive with: spinning writers, blocking writers
+
+Blocking write
+--------------
+
+This lock makes sure at most one writer is active, ie. preventing both
+spinning and blocking writers to take the lock.
+
+shareeable with: none
+exclusive with: spinning writers, blocking writers,
+                spinning readers, spinning readers
+
+
+Other topics and questions
+==========================
+
+The most common question is: why can't you use existing locking primitives?
+The answer: none of them supports all the requirements.
+
+The separate spinning and blocking semantics provide a way to annotate
+sections where busy waiting (ie. spinlock) is fine due to the critical section
+being short. The sleep/wake/scheduling cost is removed.
+
+Blocking allows to eventually do IO or other potentially waiting operations.
+
+The writer-can-also-read-lock semantics might be seen as a weird one and is
+utilized in deep callchains where the top caller needs to update eg. block
+ownership information and needs to lookup that information.
+
+This is done far from the top caller, and passing information everywhere would
+make many functions unnecessarily and unobviously complicated.
+
+Example stacktrace with BUG_ON inside btrfs_tree_read_lock when the lock has
+been acquired by the same task already:
+
+  kernel BUG at fs/btrfs/locking.c:125!
+  invalid opcode: 0000 [#1] PREEMPT SMP
+  CPU: 3 PID: 2310 Comm: umount Not tainted 5.3.0-rc7-1.ge195904-vanilla+ #481
+  Hardware name: empty empty/S3993, BIOS PAQEX0-3 02/24/2008
+  RIP: 0010:btrfs_tree_read_lock+0x23c/0x270 [btrfs]
+  RSP: 0018:ffffa9cd470872e0 EFLAGS: 00010287
+  RAX: 0000000000000200 RBX: ffff8b5062d42d88 RCX: 0000000000000906
+  RDX: 0000000000000002 RSI: 0000000000000001 RDI: ffff8b5062d42e20
+  RBP: ffff8b5062d42e20 R08: 0000000000000001 R09: 0000000000000000
+  R10: 0000000000000000 R11: ffff8b503a1228c0 R12: ffffffffc0e0f242
+  R13: 0000000000000000 R14: ffff8b5062d42e68 R15: 0000000000000000
+  FS:  00007f1df3bf9840(0000) GS:ffff8b5067200000(0000) knlGS:0000000000000000
+  CS:  0010 DS: 0000 ES: 0000 CR0: 0000000080050033
+  CR2: 00000000006b1f70 CR3: 000000021fb1e000 CR4: 00000000000006e0
+  Call Trace:
+   ? btrfs_root_node+0xf8/0x2d0 [btrfs]
+   btrfs_read_lock_root_node+0x2f/0x40 [btrfs]
+   btrfs_search_slot+0x605/0x1030 [btrfs]
+   ? btrfs_get_extent+0x127/0xc20 [btrfs]
+   btrfs_lookup_file_extent+0x4a/0x70 [btrfs]
+   btrfs_get_extent+0x153/0xc20 [btrfs]
+   __do_readpage+0x601/0xa60 [btrfs]
+   ? btrfs_real_readdir+0x510/0x510 [btrfs]
+   extent_readpages+0x225/0x360 [btrfs]
+   read_pages+0x70/0x160
+   ? __do_page_cache_readahead+0x19f/0x230
+   __do_page_cache_readahead+0x19f/0x230
+   ondemand_readahead+0x144/0x620
+   ? page_cache_sync_readahead+0xf4/0x2b0
+   ? __load_free_space_cache+0x194/0x780 [btrfs]
+   __load_free_space_cache+0x1cd/0x780 [btrfs]
+   load_free_space_cache+0xab/0x180 [btrfs]
+   btrfs_cache_block_group+0x1c7/0x480 [btrfs]
+   ? finish_wait+0x80/0x80
+   find_free_extent+0xbc9/0x1450 [btrfs]
+   btrfs_reserve_extent+0x92/0x190 [btrfs]
+   btrfs_alloc_tree_block+0x110/0x360 [btrfs]
+   ? free_debug_processing+0x1b1/0x450
+   alloc_tree_block_no_bg_flush+0x47/0x50 [btrfs]
+   __btrfs_cow_block+0x141/0x790 [btrfs]
+   btrfs_cow_block+0x10d/0x2a0 [btrfs]
+   commit_cowonly_roots+0x55/0x320 [btrfs]
+   ? btrfs_qgroup_account_extents+0x2bf/0x3f0 [btrfs]
+   ? btrfs_run_delayed_refs+0x124/0x1c0 [btrfs]
+   btrfs_commit_transaction+0x510/0xb30 [btrfs]
+   ? btrfs_attach_transaction_barrier+0x1e/0x50 [btrfs]
+   sync_filesystem+0x74/0xa0
+   generic_shutdown_super+0x22/0x110
+   kill_anon_super+0xe/0x30
+   btrfs_kill_super+0x12/0xa0 [btrfs]
+   deactivate_locked_super+0x3a/0x70
+   cleanup_mnt+0xb4/0x150
+   task_work_run+0x87/0xb0
+   exit_to_usermode_loop+0xa7/0xb0
+   do_syscall_64+0x1b6/0x1d0
+   entry_SYSCALL_64_after_hwframe+0x49/0xbe
