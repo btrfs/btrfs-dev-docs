@@ -1,0 +1,77 @@
+Checksums
+---------
+
+=== Summary
+
+Currently in a BTRFS file-system, checksums are employed to check for eventual
+data corruption due to hardware failures. For this use-case using a Cyclic
+Redundancy Check as the checksum algorithm is sufficient. Calculation of a
+Cyclic Redundancy Check is fast and it is good to detect random bit corruption
+which is the case for hardware errors.
+
+For other applications such as de-duplication of file-system blocks and
+cryptographic verification it is not sufficient to use a Cyclic Redundancy
+Check due to the hight probability of collisions.
+
+There also is a difference between the two additional use-cases of
+de-duplication and cryptographic verification of file-system blocks. For
+de-duplication there is no need to employ a cryptographically secure hashing
+algorithm, but an algorithm that is fast enough and has only very little hash
+collisions.
+
+On the other hand, for the cryptographic verification of a file-system block
+you need an algorithm which is seen as cryptographically secure by the
+security and cryptography community.
+
+=== Applications
+
+==== Detection of corrupted file-system blocks
+
+The detection of corrupted file-system blocks due to random bit errors based
+on hardware failures currently is the only application for the Checksumming
+capabilities of BTRFS. To detect these random bit errors a Cyclic Redundancy
+Check (CRC) is used. CRCs are particularly good at detecting common errors
+caused by noise in transmission channels and have a fixed length value which
+makes them ideal for this application in
+BTRFS.footnote[https://en.wikipedia.org/wiki/Cyclic_redundancy_check] The CRC
+used in BTRFS is CRC32 and thus has a length of 32 Bits (4 Bytes). A CRC is
+computed for every meta-data block inside the meta-data header or for every
+data block in a separate tree, the checksum tree.
+
+=== Current Implementation
+
+This section describes the current implementation of checksumming in BTRFS,
+both the kernel and user-space part. Additionally the test coverage of BTRFS'
+checksumming feature in xfstests is analyzed.
+
+==== Kernel
+
+In the BTRFS kernel driver, the main entry point for checksums is
+`csum_tree_block()` which is called by either `csum_dirty_buffer()` for
+meta-data or `btrfs_csum_one_bio()` for data blocks.
+
+The verification of a checksum happens in `__readpage_endio_check()` for data
+pages or via `csum_dirty_buffer()` in `btree_readpage_end_io_hook()` for
+meta-data.
+
+==== User-Space
+
+Like in the Kernel the user-space part of BTRFS (btrfs-progs) several tools do
+either write or check a file-system block's checksum.
+
+In the 'mkfs.btrfs' utility, which is used to initially create a BTRFS
+file-system the code sets the checksum type in the super block to CRC32, it
+creates the checksum tree on disk, writes the checksum of the root directories
+extents.
+
+The 'btrfs check' command reads and compares the extent checksums when running
+a `check` operation on a BTRFS formatted block device to check for corruption
+of disk blocks.
+
+==== xfstests
+
+Currently there a number of tests in xfstests which check for correct
+checksums but no tests for the checksum feature directly. Given that any
+corruption of a disk block, be it meta-data or a data block results in a
+checksumming error this is sufficient.
+
