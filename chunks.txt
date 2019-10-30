@@ -1,0 +1,94 @@
+Introduction
+=============
+
+Btrfs uses the concepts of chunks in order to implement its logical space. This
+space is linear and is overlaid atop the physical storage. This allows to 
+incorporate volume manager functionality in the filesystem. To fully understand 
+how various RAID modes are implementes it's important to understand how this 
+logical spaces relates to physical blocks on disk. 
+
+BTRFS splits the logical space into 3 types of block groups/chunks. Each distinct
+type is used for particular type of allocation. DATA block groups are used for 
+storing data, METADATA for storing metadata and SYSTEM for storing some of the 
+critical trees of the filesystem. Each of those chunk types can have different 
+raid characteristics, for example a filesystem can have a RAID1 metadata, meaning 
+there will be 2 copies of every metadata on 2 disks and SINGLE data i.e only a 
+single copy of the actual data. 
+
+Chunks are allocated on demand throughot the life of the filesystem and their 
+utilization will be dependent on the type of workload being used. For example a
+moderately large filesystem can use a lot of metadata space if it uses plenty 
+of snapshots, since every snapshot adds metadata overhead. 
+
+Each chunk consists of one or more device extents. A device extent is a 
+contiguous physical space which is allocated for a particular allocation type (
+metadata/data/system as described above). As a concrete example consider 
+having a filesystem which has metadata stored as raid1. In the chunk tree it 
+looks like: 
+
+tem 3 key (FIRST_CHUNK_TREE CHUNK_ITEM 4593811456) itemoff 15863 itemsize 112
+		length 268435456 owner 2 stripe_len 65536 type METADATA|RAID1
+		io_align 65536 io_width 65536 sector_size 4096
+		num_stripes 2 sub_stripes 1
+			stripe 0 devid 2 offset 2425356288
+			dev_uuid a7963b67-1277-49ff-bb1d-9d81c5605f1b
+			stripe 1 devid 1 offset 2446327808
+			dev_uuid 5f8b54f0-2a35-4330-a06b-9c8fd935bc36
+
+Here we see we have a metadata chunk, whose logical size is 256m but its physical 
+size is really 512 mb. Because the logical 256mb will consist of 2 physical 
+stripes, one on each device comprising the filesystem. Another example would be
+RAID0: 
+
+item 2 key (FIRST_CHUNK_TREE CHUNK_ITEM 2446327808) itemoff 15975 itemsize 112
+		length 2147483648 owner 2 stripe_len 65536 type DATA|RAID0
+		io_align 65536 io_width 65536 sector_size 4096
+		num_stripes 2 sub_stripes 1
+			stripe 0 devid 2 offset 1351614464
+			dev_uuid a7963b67-1277-49ff-bb1d-9d81c5605f1b
+			stripe 1 devid 1 offset 1372585984
+			dev_uuid 5f8b54f0-2a35-4330-a06b-9c8fd935bc36
+
+Here we have a logical data chunk that's 2gb in size and each physical stripe 
+is 1g. That's because in RAID0 mode btrfs splits writes across 2 disks. Usually 
+to calculate the length of a physical extent one has to divide the logical 
+chunk size by the number of stripes. Notable exception is raid1 since data 
+is mirrored there. 
+
+Translating physical to logical addresses
+=========================================
+
+Various functions inside btrfs translate between logical and physical addresses. 
+To understand how this is done it's important to understand the parlance of 
+btrfs' code. Let's work out through an example. 
+
+Consider we want to write 2m at at 4596957184 - that's 3m past the start of 
+the data chunk in the previous example. In order to see where in the physical 
+stripe this write will go into we need to derive the following values: 
+
+block group offset = [addres within block group] -  [start address of block group]
+block_group_offset = 4596957184 - 4593811456 = 3145728 => 3m
+
+Btrfs actually uses the word "stripe" for 2 different types of stripe. THe first
+is the already introduced physical stripe. The second type stripe is the logical
+stripe. Logical stripe is the granualrity at which writes are mapped in btrfs, 
+that's generally io_width which is currently hard-coded at 64k. To calculate 
+the logical stripe the block_group_offset is divided by logical stripe size : 
+
+logical_stripe = [block group offset ] / [logical stripe size]
+logical_stripe = 3145728 / 64k = 48
+
+Aimed  with those 2 variables it's possible to calculate the physical address
+by: 
+
+physical_address = [physical stripe start] + [logical_stripe] * [logical stripe_size]
+physical_address = 1351614464 + 48 * 64k = 1351614464 + 3145728 = 1354760192
+
+So logical address 4596957184 corresponds to physical adress 1354760192 for 
+that particular device. For the other chunk since the base address is different 
+naturally the end result is also going to be different.
+
+The important thing to consider is "stripe" refers to more than one thing in 
+btrfs parlance, namely it could refer to a physical stripe - the physical chunk, 
+which constitutes a logical one or the "logical stripe" which is the write
+granularity of btrfs. 
