@@ -73,36 +73,71 @@ Power loss can happen anytime before, during or after either of trans X or
 	filesystem will be created with the unchanged FSID.
 
 	4. Failure during transaction x + 1. When such a failure happens the
-	filesystem in question will be partitioned in two sets P and Q. Where P
-	would have the C flag and a new value for fsid written to it as well as the
-	old FSID value written in the ‘metadata_uuid’ field. In contrast Q would
-	have just the old fsid and the IP flag, also the superblock’s generation 
-	number of disks in P will be higher than those in Q. Again two cases needs
-	to be handled:
+	filesystem in question will be partitioned in two sets P and Q.
+	Q would have just the old fsid and the IP flag, also the superblock’s generation
+	number of disks in P will be higher than those in Q.
+	There are two cases of P here accoring to the new FSID value:
 
-		4.1 The first one is a disk from partition P being scanned initially.
-		This means that fs_devices will be created with differing
-		fsid/metadata_uuid values. Subsequently, when other disks from P are scanned they will just
-		be added as normally. The interesting case is when a disk from partition
-		Q are scanned. In this case the code should see that the superblock in
- 		question has the IP flag set and at the same time will see that there
-		is already a fs_devices struct which has differing metadata/fsid members
-		AND the metadata_uuid matches that of FSID in disk in Q. In this case
- 		the disk will be added to the filesystem, same logic applies to rest
- 		of disks in partition Q upon next transaction commit their SB will be
- 		overwritten with the correct information. 
+		4.1 The new fsid value written to P differs from the old metadata_uuid value.
+		Where P	would have the C flag and a new value for fsid written to it as
+		well as the old FSID value written in the ‘metadata_uuid’ field.
+		In contrast Again two cases needs to be handled:
 
-		4.2 Disks in Q are handled the same way as in scenario 2.1. The main
-		difference is how disks in P are handled. When such disks are scanned
-		they will have differing metadata/fsid uuid, however they will detect
-		that an fs_devices exist such that the metadata of the disk matches the
-		metadata/fsid of the fs_devices AND the IP flag is set in fs_device
-		indicating that it was created from a superblock that had the IP flag
-		set. This will be an indication to the scanning code that it needs to
-		add the disk, additionally since disks in P will have a higher
-		superblock generation number than disk in Q upon adding such a disk to
-		a fs_devices it needs to overwrite the fsid/metadata details, since
-		upon mount a disk in P will be used. 
+			4.1.1 The first one is a disk from partition P being scanned initially.
+			This means that fs_devices will be created with differing
+			fsid/metadata_uuid values.
+			Subsequently, when other disks from P are scanned they will just
+			be added as normally. The interesting case is when a disk from partition
+			Q are scanned. In this case the code should see that the superblock in
+			question has the IP flag set and at the same time will see that there
+			is already a fs_devices struct which has differing metadata/fsid members
+			AND the metadata_uuid matches that of FSID in disk in Q. In this case
+			the disk will be added to the filesystem, same logic applies to rest
+			of disks in partition Q upon next transaction commit their SB will be
+			overwritten with the correct information.
+
+			4.1.2 Disks in Q are handled the same way as in scenario 2.1. The main
+			difference is how disks in P are handled. When such disks are scanned
+			they will have differing metadata/fsid uuid, however they will detect
+			that an fs_devices exist such that the metadata of the disk matches the
+			metadata/fsid of the fs_devices AND the IP flag is set in fs_device
+			indicating that it was created from a superblock that had the IP flag
+			set. This will be an indication to the scanning code that it needs to
+			add the disk, additionally since disks in P will have a higher
+			superblock generation number than disk in Q upon adding such a disk to
+			a fs_devices it needs to overwrite the fsid/metadata details, since
+			upon mount a disk in P will be used.
+
+		4.2 The new fsid value written to P is same with the old metadata_uuid
+		value. Now P's 'metadata_uuid' field is cleared and the field to
+		indentify by is only 'fsid'. P does not have the C flag or the IP flag
+		either. Two cases needs to be handled:
+
+			4.2.1 The first one is a disk from partition P being scanned initially.
+			This means that fs_devices will be created with same
+			fsid/metadata_uuid values. Subsequently, when other disks from P
+			are scanned they will just be added as normally.
+			The interesting case is when a disk from partition Q are scanned.
+			In this case the code should see that the superblock in
+			question has the IP flag set and at the same time will see that there
+			is already a fs_devices struct which has same metadata/fsid members
+			AND the metadata_uuid matches that of FSID in disk in Q. In this case
+			the disk will be added to the filesystem, same logic applies to rest
+			of disks in partition Q upon next transaction commit their SB will be
+			overwritten with the correct information.
+
+			4.2.2 Disks in Q are handled the same way as in scenario 2.1. The main
+			difference is how disks in P are handled. When such disks are
+			scanned first, fs_devices will have differing metadata/fsid
+			uuid. However they will detect that an fs_devices exist such that
+			the fsid of the disk matches the metadata of the fs_devices
+			AND the IP flag is set in fs_device indicating that it was created from
+			a superblock that had the IP flag set.
+			This will be an indication to the scanning code that it needs to
+			add the disk, additionally since disks in P will have a higher
+			superblock generation number than disk in Q upon adding such a disk to
+			a fs_devices it needs to overwrite the fsid/metadata details, since
+			upon mount a disk in P will be used.
 
 	5. Failure after transaction X + 1 - the filesystem is already changed so
 	no need to do special handling
