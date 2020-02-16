@@ -7,8 +7,8 @@ incorporate volume manager functionality in the filesystem. To fully understand
 how various RAID modes are implementes it's important to understand how this 
 logical spaces relates to physical blocks on disk. 
 
-BTRFS splits the logical space into 3 types of block groups/chunks. Each distinct
-type is used for particular type of allocation. DATA block groups are used for 
+BTRFS splits the logical space into 3 types of chunks. Each distinct
+type is used for particular type of allocation. DATA chunks are used for
 storing data, METADATA for storing metadata and SYSTEM for storing some of the 
 critical trees of the filesystem. Each of those chunk types can have different 
 raid characteristics, for example a filesystem can have a RAID1 metadata, meaning 
