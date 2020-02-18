@@ -1223,3 +1223,19 @@ struct btrfs_disk_balance_args {
 
         __le64 unused[6];
 }
+
+UUID item
+----------------
+
+For every created subvolume/snapshot an item is inserted into the UUID tree.
+This items is used to map from uuid to subvolume id. 
+
+Key:
+key.objectid = first half of UUID 
+key.type = UUID_KEY_SUBVOL  or UUID_KEY_RECEIVED_SUBVOL
+key.offset = second half of UUID 
+
+The body of the items consists of an array of one or more (but typically one) 
+subvolume id.  For subvolumes the key's type field has a value of UUID_KEY_SUBVOL. 
+When a subvolume is received it creates both a UUID_KEY_RECEIVED_SUBVOL and 
+UUID_KEY_SUBVOL items with the same subvol_id body. 
