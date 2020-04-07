@@ -14,7 +14,7 @@ logical address. However, due to the way btrfs manages its space the first
 thing that needs to happen is map this logical address to physical one.
 Additionally, depending on the raid profile of the portion of disk where the
 requested data falls in, it's possible that the single io is actually going to
-turn into multiple io requestes.
+turn into multiple io requests.
 
 This mapping occurs in btrfs_map_bio. First a btrfs_bio struct is created - it
 holds information about the underlying properties of the range that we want to
@@ -47,7 +47,7 @@ it might look a bit daunting at first. To fully comprehend it it's important to
 describe a few terms as used in btrfs bio mapping parlance:
 
  * Chunk - A chunk is the logical unit from which btrfs allocates space. They
- usually come in size of 1gb (but could be bigger). When we have a Raid1 chunk
+ usually come in size of 1gb (but could be bigger). When we have a RAID1 chunk
  it will be backed by 2 disks stripes (more on that see below). A chunk has a
  starting logical address and a size. So data writes will fall within the
  boundaries of a particular chunk.
@@ -58,7 +58,7 @@ describe a few terms as used in btrfs bio mapping parlance:
  be backed by 2x1gb stripes from two devices.
 
  The other meaning of stripe is the logical chunks into which btrfs groups
- writes. If we take for example the default 64k stripe size and have an adress,
+ writes. If we take for example the default 64k stripe size and have an address,
  say, 1104412672, then it really falls within the 16852th stripe.
 
 For the sake of simplicity this section will look at how a RAID0 write of 128k
