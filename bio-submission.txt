@@ -31,7 +31,8 @@ Bio mapping
 -----------
 Bio mapping is the process during which the filesystem calculates in what way
 exactly the given io request has to be submitted. It essentially translates a
-high-level request such as "write 128k from logical address 1234" into :
+high-level request such as "write 128k from logical address 1234 on a RAID0
+block-group" into:
 
 	1. Split the request into stripes (assuming a default stripe size of 64k) this
 	means this request will have to be split into 2 writes, each of 64k length.
