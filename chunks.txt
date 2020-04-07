@@ -4,7 +4,7 @@ Introduction
 Btrfs uses the concepts of chunks in order to implement its logical space. This
 space is linear and is overlaid atop the physical storage. This allows to 
 incorporate volume manager functionality in the filesystem. To fully understand 
-how various RAID modes are implementes it's important to understand how this 
+how various RAID modes are implements it's important to understand how this 
 logical spaces relates to physical blocks on disk. 
 
 BTRFS splits the logical space into 3 types of chunks. Each distinct
@@ -15,7 +15,7 @@ raid characteristics, for example a filesystem can have a RAID1 metadata, meanin
 there will be 2 copies of every metadata on 2 disks and SINGLE data i.e only a 
 single copy of the actual data. 
 
-Chunks are allocated on demand throughot the life of the filesystem and their 
+Chunks are allocated on demand throughout the life of the filesystem and their 
 utilization will be dependent on the type of workload being used. For example a
 moderately large filesystem can use a lot of metadata space if it uses plenty 
 of snapshots, since every snapshot adds metadata overhead. 
@@ -26,7 +26,7 @@ metadata/data/system as described above). As a concrete example consider
 having a filesystem which has metadata stored as raid1. In the chunk tree it 
 looks like: 
 
-tem 3 key (FIRST_CHUNK_TREE CHUNK_ITEM 4593811456) itemoff 15863 itemsize 112
+item 3 key (FIRST_CHUNK_TREE CHUNK_ITEM 4593811456) itemoff 15863 itemsize 112
 		length 268435456 owner 2 stripe_len 65536 type METADATA|RAID1
 		io_align 65536 io_width 65536 sector_size 4096
 		num_stripes 2 sub_stripes 1
@@ -66,12 +66,12 @@ Consider we want to write 2m at at 4596957184 - that's 3m past the start of
 the data chunk in the previous example. In order to see where in the physical 
 stripe this write will go into we need to derive the following values: 
 
-block group offset = [addres within block group] -  [start address of block group]
+block group offset = [address within block group] -  [start address of block group]
 block_group_offset = 4596957184 - 4593811456 = 3145728 => 3m
 
-Btrfs actually uses the word "stripe" for 2 different types of stripe. THe first
+Btrfs actually uses the word "stripe" for 2 different types of stripe. The first
 is the already introduced physical stripe. The second type stripe is the logical
-stripe. Logical stripe is the granualrity at which writes are mapped in btrfs, 
+stripe. Logical stripe is the granularity at which writes are mapped in btrfs, 
 that's generally io_width which is currently hard-coded at 64k. To calculate 
 the logical stripe the block_group_offset is divided by logical stripe size : 
 
@@ -84,7 +84,7 @@ by:
 physical_address = [physical stripe start] + [logical_stripe] * [logical stripe_size]
 physical_address = 1351614464 + 48 * 64k = 1351614464 + 3145728 = 1354760192
 
-So logical address 4596957184 corresponds to physical adress 1354760192 for 
+So logical address 4596957184 corresponds to physical address 1354760192 for 
 that particular device. For the other chunk since the base address is different 
 naturally the end result is also going to be different.
 
