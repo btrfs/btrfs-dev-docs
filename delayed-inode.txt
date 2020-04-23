@@ -1,7 +1,7 @@
 Delayed inodes
 ==============
 
-The delayed inodes are a mechanims to avoid unnecessary IO and metadata
+The delayed inodes are a mechanism to avoid unnecessary IO and metadata
 updates regarding file creation and deletion.  The operations are first
 performed only in memory, and when the transaction commits, the respective
 metadata structures are created.  This can help in situations where many
@@ -24,7 +24,7 @@ the state of the in-memory copy of struct inode. In turn those modification
 should eventually be synced to disk to keep the filesystem consistent. In
 BTRFS the function which performs this syncing between the generic inode and
 the internal representation of an inode (INODE_ITEM) is called
-btrfs_update_inode.  Everytime we want to sync the state to an INODE_ITEM  a
+btrfs_update_inode.  Every time we want to sync the state to an INODE_ITEM  a
 call to btrfs_delayed_update_inode is performed which captures current state
 in an in-memory btrfs_inode_item and also reserves enough space for writing
 this item on-disk during transaction commit. It's important to note that there
@@ -53,9 +53,9 @@ inode ref.
 Directory index
 ---------------
 
-Everytime an entry is added to a directory btrfs creates 2 items. One is the
-DIR which represents the entry in the directory. It also creates a duplicate
-DIR INDEX item which is used by readdir.  Thanks to delayed inode btrfs is
+Every time an entry is added to a directory btrfs creates 2 items. One is the
+DIR_ITEM which represents the entry in the directory. It also creates a duplicate
+DIR_INDEX item which is used by readdir.  Thanks to delayed inode btrfs is
 able to delay the insertion of the DIR_INDEX item until transaction commit. In
 the mean time in addition to querying the btree for dir items, btrfs'
 implementation of readdir also enumerates the entries in the delayed inode
@@ -68,7 +68,7 @@ Overview
 --------
 
 The implementation relies on a delayed root object into the file system, that
-uses two lists to manage delayed nodes. There is one delayed node coresponding
+uses two lists to manage delayed nodes. There is one delayed node corresponding
 to every directory/file created in the filesystem. Delayed nodes are anchored
 in the delayed root by 2 lists - prepare_list and node_list. Items on the
 former list are only processed by the async worker, that's invoked when
@@ -81,10 +81,10 @@ Delayed node
 
 Inode updates are managed by the btrfs_delayed_update_inode function, it
 sets the BTRFS_DELAYED_NODE_INODE_DIRTY flag, meaning this delayed node has
-dirty inode data and needs to be comitted on-disk during next processing cycle
+dirty inode data and needs to be committed on-disk during next processing cycle
 of this delayed node.
 
-Inode ref deletion is faciliated by the btrfs_delayed_delete_inode_ref function,
+Inode ref deletion is facilitated by the btrfs_delayed_delete_inode_ref function,
 it also uses a flag (BTRFS_DELAYED_NODE_DEL_IREF) signalling the need to delete
 the inode ref item.
 
