@@ -34,14 +34,12 @@ exactly the given io request has to be submitted. It essentially translates a
 high-level request such as "write 128k from logical address 1234 on a RAID0
 block-group" into:
 
-	1. Split the request into stripes (assuming a default stripe size of 64k) this
-	means this request will have to be split into 2 writes, each of 64k length.
-
-		1.1 First 64k are going to go into disk0, create the necessary structures to
-		describe this information
-
-		1.2 Second 64k are going into disk1, create the necessary structures to describe
-		this
+1. Split the request into stripes (assuming a default stripe size of 64k) this
+means this request will have to be split into 2 writes, each of 64k length.
+    1.1 First 64k are going to go into disk0, create the necessary structures to
+    describe this information
+    1.2 Second 64k are going into disk1, create the necessary structures to describe
+    this
 
 In this section we are going to look into detail how this process happens, since
 it might look a bit daunting at first. To fully comprehend it it's important to
@@ -91,21 +89,16 @@ to map i.e the request length. The first step is to find the in-memory data
 about the chunk. It's represented by an instance of extent_map structure. Then
 the following calculations take places:
 
-	1. The chunk offset is calculated by substracting the chunk start address
-	from the logical address passed:
-
-	chunk_offset = 1104150528 - 1104150528 = 0;
-
-	2. The number of 64k strips we need to skip from the beginning of the chunk
-	to arrive at our address:
-
-	stripe_nr = 0 /  64k = 0.
-
-	3. The starting address of our stripe
-	stripe_offset = stripe_nr * stripe_len = 0 * 64k = 0
-
-	4. The offset, in bytes, within the resulting stripe that this address starts:
-	stripe_offset = chunk_offset - stripe_offset = 0 - 0 = 0;
+1. The chunk offset is calculated by substracting the chunk start address from
+the logical address passed:
+`chunk_offset = 1104150528 - 1104150528 = 0;`
+2. The number of 64k strips we need to skip from the beginning of the chunk
+to arrive at our address:
+`stripe_nr = 0 /  64k = 0.`
+3. The starting address of our stripe
+`stripe_offset = stripe_nr * stripe_len = 0 * 64k = 0`
+4. The offset, in bytes, within the resulting stripe that this address starts:
+`stripe_offset = chunk_offset - stripe_offset = 0 - 0 = 0;`
 
 Since it so happens that this address align perfectly with the beginning of the
 chunk all of these offsets is going to be 0.
@@ -117,7 +110,7 @@ respective raid mode. In this example we'll look at RAID0. The value that has
 to be calculated is the index of the physical stripe i.e which device this write
 is going to be directed. This is facilitated by the following code:
 
-stripe_nr = div_u64_rem(stripe_nr, map->num_stripes, &stripe_index);
+`stripe_nr = div_u64_rem(stripe_nr, map->num_stripes, &stripe_index);`
 
 So what happens here is that the logical stripe number (stripe_nr) is divided
 by the physical number of stripes (i.e disk stripes, see above definition of
@@ -133,38 +126,59 @@ Finally, after all calculations are done the btrfs_bio struct is filled with the
 device corresponding to the physical stripe as well as the address where the
 write has to happen:
 
-      bbio->stripes[i].physical = map->stripes[stripe_index].physical +
-								  stripe_offset + stripe_nr * map->stripe_len;
+`bbio->stripes[i].physical = map->stripes[stripe_index].physical + stripe_offset + stripe_nr * map->stripe_len;`
 
 So here we first take the physical address of the corresponding physical stripe,
 in this case stripe_index is 0 so the equation becomes:
-1083179008 + 0(stripe_offset) + 0(stripe_nr)*64k(map->stripe_len) = 1083179008.
+
+`1083179008 + 0(stripe_offset) + 0(stripe_nr)*64k(map->stripe_len) = 1083179008`
 
 And indeed, the first ever data write to a new filesystem will start at the
 physical start address of the backing device.
 
-For the sake of completeness, here are the calculations for the 2nd physical
-stripe. The logical address will be: 1104216064 (1104150528+64k).
+For the sake of completeness, here is a worked example for the 2nd physical
+stripe. The logical address will be: `1104216064 (1104150528+64k)`.
 
-chunk_offset = 1104216064 - 1104150528 = 65536 (64k)
-stripe_nr = 65536 / 65536  = 1
-stripe_offset = 1 * 65536 = 65536
-stripe_offset = 65536 - 65536 = 0
+    chunk_offset = 1104216064 - 1104150528 = 65536 (64k)
+    stripe_nr = 65536 / 65536  = 1
+    stripe_offset = 1 * 65536 = 65536
+    stripe_offset = 65536 - 65536 = 0`
+    stripe_nr = 1 / 2 = 0 and stripe_index = 1
+    physical_addr = 1104150528 + 0(stripe_offset) + 0(stripe_nr)*64k = 1104150528
 
-stripe_nr = 1 / 2 = 0 and stripe_index = 1
-
-physical_addr = 1104150528 + 0(stripe_offset) + 0(stripe_nr)*64k = 1104150528
 So the next 64k will be written at physical address 1104150528 on the 2nd device.
-
 
 End IO handling
 ---------------
+Due to the raid support in btrfs end io handling is somewhat complicated. It
+currently involves at least 2 layers. For the sake of simplicity this section
+will consider a read completion scenario wherein an error is not encountered
+and btrfs doesn't perform any repair.
 
-All the submitted bios have their bi_end_io point to btrfs_end_bio. So for
-every completed stripe the status is checked and if an error occurred this is
-printed. Then when the last bio for this io is completed (as indicated by
-bbio->stripes_pending becoming 0) the total errors are checked against the
-tolerated count (i.e. raid1 can tolerate 1 error since it has 2 copies of
-data).  If the error don't exceed the tolerance value then the io is completed
-via btrfs_end_bbio which restores the values to the initial bio and calls
-bio_endio.
+Initially a read bio is created `end_bio_extent_readpage` as the
+io handler in `__do_readpage` but during the submission process the endio
+handler will be changed to `end_workqueue_bio` in `btrfs_bio_wq_end_io`. Thi
+is necessary as btrfs' readpage enio handler is not softirq safe and since bios in
+the kernel are completed in softirq context the first order of business is to
+schedule the necessary completion work in a normal task context. This occurs by
+saving the original end io handler and original private context of the bio into
+another structure - `btrfs_end_io_wq` and setting it as the `bi_private`
+information for the bio.
+
+Subsequently the bios is sent to be mapped as described above and right
+before submission, in `submit_stripe_bio` the `bi_end_io`/`bi_private` are
+again changed for another set of data. Namely, the endio function is now set to
+`btrfs_end_bio` and bi_private is set to `struct btrfs_bio`. Given this, the
+first function which is run o bio completion is `btrfs_end_bio` it performs
+some generic bookeping, ensuring that if we have a request which involves multiple
+bios (i.e a write to RAID1) only the final bio would run further code. It also deals
+with incrementing error counters if the bio has encountered an error. If all is
+well eventually `btrfs_end_bbio` is called. It simply copies the original values of
+`bi_private`/`bi_end_io` to the bio and calls `bio_endio` which calls the new
+endio handler. The original value in this case was `end_workqueue_bio`. That
+function in turns is responsible to queueing the final execution of the real
+endio handler to the appropriate workqueue.
+
+So the real execution chain is `btrfs_end_bio->end_workqueue_bio->end_bio_extent_readpage`.
+Lastly, in `end_bio_extent_readpage` the checksum of every segment is checked
+(that is if checksums are enabled) and finally the bios is completed.
