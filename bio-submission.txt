@@ -181,3 +181,39 @@ endio handler to the appropriate workqueue.
 So the real execution chain is `btrfs_end_bio->end_workqueue_bio->end_bio_extent_readpage`.
 Lastly, in `end_bio_extent_readpage` the checksum of every segment is checked
 (that is if checksums are enabled) and finally the bios is completed.
+
+Bio repair
+------------
+Since BTRFS supports raid functionality it's able to seamlessly repair broken
+reads. The exact details vary depending on the raid level recovery has to be
+performed from. For clarity next section will discuss RAID1 repair scenario of
+data reads.
+
+ RAID1
+---------
+In RAID1 mode every data block has a copy so when a failure is detected it's
+possible to retry the read using the 2nd copy. The journey of bio repair starts
+in the endio handler - `end_bio_extent_readpage`. As the code iterates through
+the bio vectors in the bio it will perform checksum validation by calling the
+`readpage_end_io_hook` . If there is an error during that validation
+`btrfs_submit_read_repair` will be called. It's important to note that the
+repair code always works on filesystem block size granularity.  Currently FSB
+is always equal to page size. So the repair function always knows the exact
+page where failure has occurred. First a failure record is created and recorded
+in the per-inode io failure tree. That record holds information such as the
+failed page from the original bio, logical/physical offsets and length.
+Subsequently `btrfs_check_repairable` is called to see if the bios can indeed
+be repaired i.e there's more than 1 copy. But what's more important it also
+initializes `failrec::this_mirror` - this member indicates which mirror is
+going  to be used by the repair bio. Finally repair_bio is created in
+`btrfs_submit_read_repair` and submitted as usual by calling `submit_bio_hook`,
+using the mirror as initialized by `btrfs_check_repairable`. For RAID1 mirrors
+are simply iterated from 1 and the failed one is skipped. For RAID5/6
+`this_mirror` is used to implement a state machine and certain values have
+special meaning.
+
+Once the repair bio is submitted it becomes responsible for filling in the
+passed page with valid data. This allows for a bio consisting of multiple pages
+to have only some of them corrupted. In this scenario those pages which are
+fine will be unlocked by the original bio whilst those which are corrupted each
+will be filled in and unlocked by the respective repair bio.
