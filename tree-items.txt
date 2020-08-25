@@ -506,14 +506,18 @@ xfs/ext4). In BTRFS a file extent can be in one of 3 states:
 
 * BTRFS_FILE_EXTENT_INLINE - an extent item who can hold all of the actual file
 data in its body is considered an inline extent. In such cases data is read
-directly from the body of the extent.
+directly from the body of the extent. The current default value is 2048 bytes,
+but it can be changed with max_inline mount option. The max_inline value is then
+calculated with min(max_inline_value, filesystem block). The default filesystem
+block size is the page size.
 
 * BTRFS_FILE_EXTENT_PREALLOC - a pre-allocated extent. These are ranges which
-have been reserved by using fallocate.
+have been reserved by using fallocate. Each extent can map up to 256Mb for
+pre-allocated extents.
 
 * BTRFS_FILE_EXTENT_REG - regular file extent. Most of the extents of a file
 would be regular extents. Those extents hold information necessary to locate
-the actual data on disk.
+the actual data on disk. Each extent can map up to 128Mb for regular extents.
 
 A file extent data item holds information about a particular logical region of
 a file. This is done through the disk_bytenr and disk_num_bytes members. File
