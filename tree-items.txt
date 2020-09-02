@@ -877,7 +877,7 @@ key.offset = crc32c name hash of either the direntry name (user visible) or the 
 of the extended attribute name
 
 
-truct btrfs_dir_item {
+struct btrfs_dir_item {
 		/* In case of ordinary direntry it holds the inode key it applies to,
 		 * in the xattr case it's zeroed out
 		 */
