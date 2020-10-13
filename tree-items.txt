@@ -464,6 +464,12 @@ possible to combine metadata and data allocations within a single block group,
 though it is not recommended. This mixed allocation policy is typically only
 seen on filesystems smaller than approximately 10 GiB in size.
 
+A typical size of metadata block group is 256MiB (filesystem smaller than 50GiB)
+and 1GiB (larger than 50GiB), for data it’s 1GiB. The system block group size is a few
+megabytes.
+
+For a smaller filesystems, the block group size is limited to 10% of the filesystem size.
+
 Key:
 key.type = BTRFS_BLOCK_GROUP_ITEM_KEY
 key.objectid = starting logical address of chunk
