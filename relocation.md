@@ -189,3 +189,25 @@ triggers the `btrfs_reloc_cow_block` path which in turn triggers
 extent, drop the extent cache for that range of the inode, and set the new
 bytenr location, adding a reference for the inode and dropping the reference to
 the old bytenr that the file extent previously pointed at.
+
+## The mechanics of relocating
+
+There are a few mechanical steps to relocating a block group.
+
+1. Mark the block group read only.  This is needed to make sure nobody tries to
+   make allocations from this block group.
+2. Create the `reloc_inode`.
+3. Commit the transaction.  Now that the block group is read only we can commit
+   the transaction and be sure the commit roots are consistent with the latest
+   changes to the block group.
+4. Relocate the blocks in the block group.  This is slightly different for
+   metadata versus data block groups.
+  a. For data, we use both the `MOVE_DATA_EXTENTS` and `UPDATE_DATA_PTRS` stages
+     of the relocation, as described above in the `reloc_inode` section.  The
+     first stage simply copies the data to it's new location.  The second stage
+     is `UPDATE_DATA_PTRS` and behaves essentially the same way as metadata
+     relocation, except we're updating the leaf's with the new location of the
+     data.
+  b. For metadata, we simply find any blocks and relocate them out of the block
+     group, and we then go back and update the parents of the relocated blocks
+     to point at the newest block.  This is done
