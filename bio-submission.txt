@@ -157,27 +157,27 @@ and btrfs doesn't perform any repair.
 
 Initially a read bio is created `end_bio_extent_readpage` as the
 io handler in `__do_readpage` but during the submission process the endio
-handler will be changed to `end_workqueue_bio` in `btrfs_bio_wq_end_io`. Thi
-is necessary as btrfs' readpage enio handler is not softirq safe and since bios in
-the kernel are completed in softirq context the first order of business is to
+handler will be changed to `end_workqueue_bio` in `btrfs_bio_wq_end_io`. This
+is necessary as btrfs' readpage endio handler is not softirq safe and since bios in
+the kernel are completed in softirq context, the first order of business is to
 schedule the necessary completion work in a normal task context. This occurs by
 saving the original end io handler and original private context of the bio into
 another structure - `btrfs_end_io_wq` and setting it as the `bi_private`
 information for the bio.
 
-Subsequently the bios is sent to be mapped as described above and right
+Subsequently the bio is sent to be mapped as described above and right
 before submission, in `submit_stripe_bio` the `bi_end_io`/`bi_private` are
 again changed for another set of data. Namely, the endio function is now set to
 `btrfs_end_bio` and bi_private is set to `struct btrfs_bio`. Given this, the
-first function which is run o bio completion is `btrfs_end_bio` it performs
-some generic bookeping, ensuring that if we have a request which involves multiple
-bios (i.e a write to RAID1) only the final bio would run further code. It also deals
-with incrementing error counters if the bio has encountered an error. If all is
-well eventually `btrfs_end_bbio` is called. It simply copies the original values of
-`bi_private`/`bi_end_io` to the bio and calls `bio_endio` which calls the new
-endio handler. The original value in this case was `end_workqueue_bio`. That
-function in turns is responsible to queueing the final execution of the real
-endio handler to the appropriate workqueue.
+first function which is run o bio completion is `btrfs_end_bio`. Since it's called
+for every stripe bio it first performs some generic bookeping, ensuring that
+for a request involving multiple bios (i.e a write to RAID1) only the final bio
+would run further code. It also deals with incrementing error counters if the
+bio has encountered an error. If all is well eventually `btrfs_end_bbio` is
+called. It simply copies the original values of `bi_private`/`bi_end_io` to the
+bio and calls `bio_endio` which calls the new endio handler. The original value
+in this case was `end_workqueue_bio`. That function in turns is responsible to
+queueing the final execution of the real endio handler to the appropriate workqueue.
 
 So the real execution chain is `btrfs_end_bio->end_workqueue_bio->end_bio_extent_readpage`.
 Lastly, in `end_bio_extent_readpage` the checksum of every segment is checked
