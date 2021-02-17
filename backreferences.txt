@@ -117,19 +117,16 @@ TREE_BLOCK   full (shared)         Contains byte offset of metadata tree node
 Resolving Back References
 -------------------------
 
-Given any extent address, a combination of at most three of the back reference
-types will be encountered while resolving ownership of the extent. It is not
-possible to encounter both types of DATA back references for a single extent,
-but it is possible to encounter both types of TREE_BLOCK back references while
-resolving ownership. The natural algorithm for resolving these references is a
-typical tree recursion algorithm. Since the kernel has limited stack depth,
-recursion is generally discouraged, especially when the depth of the recursion
-is unknown at the outset. Instead, the kernel uses a ulist implementation that
-emulates the recursion by appending the next stage in resolution to the list
-and looping over the list until it is exhausted. The algorithm described below
-assumes that the reader will retain information from previous steps. In the
-kernel, that isn't always an option and redundant lookup or I/O operations may
-be required.
+Given any extent address, all of these types of back references may be
+encountered while resolving ownership of the extent. The natural algorithm for
+resolving these references is a typical tree recursion algorithm. Since the
+kernel has limited stack depth, recursion is generally discouraged, especially
+when the depth of the recursion is unknown at the outset. Instead, the kernel
+uses a ulist implementation that emulates the recursion by appending the next
+stage in resolution to the list and looping over the list until it is
+exhausted. The algorithm described below assumes that the reader will retain
+information from previous steps. In the kernel, that isn't always an option and
+redundant lookup or I/O operations may be required.
 
 The following steps refer to each stage of back reference resolution. The data
 back reference steps will only be executed once per data extent. The metadata
